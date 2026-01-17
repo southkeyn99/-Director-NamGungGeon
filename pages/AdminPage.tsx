@@ -50,7 +50,9 @@ const AdminDashboard: React.FC<AdminPageProps> = ({ data, onUpdate }) => {
   const [isProcessing, setIsProcessing] = useState(false);
 
   const uploadToSupabase = async (file: File): Promise<string> => {
-    if (!supabase) throw new Error("Supabase client is not initialized. Check your environment variables.");
+    if (!supabase) {
+      throw new Error("서버 연결 정보가 없습니다. Vercel 환경 변수(SUPABASE_URL, SUPABASE_ANON_KEY)를 확인해주세요.");
+    }
 
     const fileExt = file.name.split('.').pop();
     const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
@@ -63,8 +65,7 @@ const AdminDashboard: React.FC<AdminPageProps> = ({ data, onUpdate }) => {
       });
 
     if (error) {
-      // Provide detailed error message from Supabase
-      throw new Error(`Supabase Storage Error: ${error.message}`);
+      throw new Error(`저장소 에러: ${error.message}. (버킷 이름이 'media'인지, Public 설정이 되어있는지 확인하세요.)`);
     }
 
     const { data: { publicUrl } } = supabase.storage
@@ -78,6 +79,11 @@ const AdminDashboard: React.FC<AdminPageProps> = ({ data, onUpdate }) => {
     const files = e.target.files;
     if (!files || files.length === 0) return;
 
+    if (!supabase) {
+      alert("클라우드 연결이 설정되지 않았습니다. SYSTEM 탭의 안내를 따라주세요.");
+      return;
+    }
+
     setIsProcessing(true);
     try {
       const uploadPromises = Array.from(files).map((file: File) => uploadToSupabase(file));
@@ -85,8 +91,7 @@ const AdminDashboard: React.FC<AdminPageProps> = ({ data, onUpdate }) => {
       callback(urls);
     } catch (err: any) {
       console.error("Cloud upload failed", err);
-      // Show the specific error to the user for better debugging
-      alert(err.message || "Image upload failed. Please check your Supabase Storage settings.");
+      alert(err.message || "이미지 업로드에 실패했습니다.");
     } finally {
       setIsProcessing(false);
     }
@@ -148,6 +153,24 @@ const AdminDashboard: React.FC<AdminPageProps> = ({ data, onUpdate }) => {
   return (
     <div className="pt-32 pb-20 px-8">
       <div className="max-w-6xl mx-auto">
+        {/* Connection Status Banner */}
+        {!supabase && (
+          <div className="mb-8 p-4 bg-red-500/10 border border-red-500/50 rounded flex flex-col md:flex-row items-center justify-between gap-4">
+            <div className="flex items-center gap-3">
+              <span className="text-red-500 animate-pulse text-lg">⚠️</span>
+              <p className="text-xs text-red-200 tracking-wide">
+                <strong>서버 연결 설정이 필요합니다.</strong> 환경 변수가 설정되지 않아 이미지 업로드가 불가능합니다.
+              </p>
+            </div>
+            <button 
+              onClick={() => setActiveTab('SYSTEM')}
+              className="px-4 py-2 bg-red-500 text-white text-[10px] tracking-widest uppercase font-bold hover:bg-red-600 transition-colors"
+            >
+              How to fix
+            </button>
+          </div>
+        )}
+
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-12 border-b border-white/10 pb-4">
           <div className="flex gap-8 overflow-x-auto pb-2 md:pb-0">
             <TabButton active={activeTab === 'CONTENT'} onClick={() => setActiveTab('CONTENT')}>Global Content</TabButton>
@@ -159,7 +182,9 @@ const AdminDashboard: React.FC<AdminPageProps> = ({ data, onUpdate }) => {
             {isProcessing ? (
               <span className="text-yellow-500 animate-pulse">Uploading to Storage...</span>
             ) : (
-              <span className="text-green-500">Cloud Synced</span>
+              <span className={supabase ? "text-green-500" : "text-gray-500"}>
+                {supabase ? "Cloud Synced" : "Offline Mode"}
+              </span>
             )}
           </div>
         </div>
@@ -272,23 +297,32 @@ const AdminDashboard: React.FC<AdminPageProps> = ({ data, onUpdate }) => {
           <div className="space-y-12">
             <div className="p-8 bg-zinc-900/50 border border-white/5 space-y-6">
               <h3 className="text-xs tracking-widest uppercase text-yellow-500 font-bold">Cloud Sync Status</h3>
-              <div className="p-4 border border-green-500/20 bg-green-500/5 text-[10px] tracking-widest text-green-500 uppercase">
-                Database Connection: {supabase ? 'Live' : 'Disconnected (Check Env Vars)'}
+              <div className={`p-4 border ${supabase ? 'border-green-500/20 bg-green-500/5 text-green-500' : 'border-red-500/20 bg-red-500/5 text-red-500'} text-[10px] tracking-widest uppercase`}>
+                Database Connection: {supabase ? 'Live' : 'Disconnected (Credentials Missing)'}
               </div>
-              <p className="text-sm text-gray-400 leading-relaxed">
-                모든 변경사항은 Supabase 클라우드에 즉시 저장됩니다.
-              </p>
+              
+              {!supabase && (
+                <div className="space-y-4 pt-4 border-t border-white/5">
+                  <p className="text-sm text-yellow-500 leading-relaxed font-bold">
+                    해결 방법:
+                  </p>
+                  <ol className="text-xs text-gray-400 space-y-2 list-decimal ml-4">
+                    <li>Vercel 프로젝트 설정(Settings) > Environment Variables 로 이동합니다.</li>
+                    <li><strong>SUPABASE_URL</strong>과 <strong>SUPABASE_ANON_KEY</strong>를 추가합니다.</li>
+                    <li>프로젝트를 다시 <strong>Redeploy</strong> 해야 변경사항이 적용됩니다.</li>
+                  </ol>
+                </div>
+              )}
             </div>
 
             <div className="p-8 bg-zinc-900/50 border border-red-500/20 space-y-6">
-              <h3 className="text-xs tracking-widest uppercase text-red-500 font-bold">Troubleshooting: Image Upload Fail</h3>
-              <p className="text-xs text-gray-400">
-                이미지 업로드 시 "Permission denied" 에러가 발생한다면 Supabase SQL Editor에서 아래 명령어를 실행하세요.
+              <h3 className="text-xs tracking-widest uppercase text-red-500 font-bold">Troubleshooting: Image Storage</h3>
+              <p className="text-xs text-gray-400 leading-relaxed">
+                환경 변수 설정 후에도 업로드가 실패한다면, Supabase 대시보드에서 <strong>'media'</strong>라는 이름의 <strong>Public Bucket</strong>이 생성되어 있는지 확인하세요.
               </p>
               <div className="relative group">
                 <pre className="bg-black p-4 text-[10px] font-mono text-yellow-500/80 overflow-x-auto border border-white/10">
-{`-- 1. 'media' 버킷 생성 확인 (Public으로 설정 필수)
--- 2. 모든 사용자(익명 포함)에게 업로드 및 조회 권한 부여
+{`-- SQL Editor에서 실행하여 권한 부여
 CREATE POLICY "Public Access" ON storage.objects FOR SELECT USING ( bucket_id = 'media' );
 CREATE POLICY "Public Upload" ON storage.objects FOR INSERT WITH CHECK ( bucket_id = 'media' );`}
                 </pre>
@@ -299,9 +333,6 @@ CREATE POLICY "Public Upload" ON storage.objects FOR INSERT WITH CHECK ( bucket_
                   Copy SQL
                 </button>
               </div>
-              <p className="text-[10px] text-gray-500 italic">
-                * Supabase Dashboard > Storage > Buckets 에서 'media' 버킷을 먼저 생성해야 합니다.
-              </p>
             </div>
           </div>
         )}
