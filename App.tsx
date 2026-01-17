@@ -21,6 +21,14 @@ const App: React.FC = () => {
   // Fetch data from Supabase on load
   useEffect(() => {
     const fetchData = async () => {
+      // If Supabase is not configured, fall back to initial data immediately
+      if (!supabase) {
+        console.warn("Supabase is not configured. Using initial constants.");
+        setData(INITIAL_DATA);
+        setLoading(false);
+        return;
+      }
+
       try {
         const { data: dbData, error } = await supabase
           .from('portfolio')
@@ -29,13 +37,13 @@ const App: React.FC = () => {
           .single();
 
         if (error || !dbData) {
-          console.warn("Could not find data in Supabase, using defaults.");
+          console.warn("Data record not found in Supabase. Using defaults.");
           setData(INITIAL_DATA);
         } else {
           setData(dbData.data);
         }
       } catch (err) {
-        console.error("Supabase connection error:", err);
+        console.error("Supabase fetch failed:", err);
         setData(INITIAL_DATA);
       } finally {
         setLoading(false);
@@ -47,15 +55,24 @@ const App: React.FC = () => {
 
   const updateData = async (newData: PortfolioData) => {
     setData(newData);
-    // Push update to Supabase
-    const { error } = await supabase
-      .from('portfolio')
-      .update({ data: newData })
-      .eq('id', 1);
     
-    if (error) {
-      console.error("Failed to save to database:", error);
-      alert("Database sync failed. Please check your connection.");
+    if (!supabase) {
+      alert("Cloud sync is disabled because Supabase is not configured.");
+      return;
+    }
+
+    try {
+      const { error } = await supabase
+        .from('portfolio')
+        .update({ data: newData })
+        .eq('id', 1);
+      
+      if (error) {
+        console.error("Failed to save to database:", error);
+        alert("Database sync failed. Check your Supabase table permissions (RLS).");
+      }
+    } catch (err) {
+      console.error("Sync error:", err);
     }
   };
 
@@ -64,7 +81,7 @@ const App: React.FC = () => {
       <div className="h-screen w-full bg-black flex items-center justify-center">
         <div className="text-center space-y-4">
           <div className="font-cinematic text-2xl tracking-[0.5em] animate-pulse">PORTFOLIO</div>
-          <p className="text-[10px] tracking-widest text-yellow-500/50 uppercase">Syncing with Server...</p>
+          <p className="text-[10px] tracking-widest text-yellow-500/50 uppercase">Loading Experience...</p>
         </div>
       </div>
     );

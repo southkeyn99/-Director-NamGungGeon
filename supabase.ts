@@ -1,8 +1,24 @@
 
 import { createClient } from '@supabase/supabase-js';
 
-// These should be set in Vercel environment variables
-const supabaseUrl = process.env.SUPABASE_URL || '';
-const supabaseAnonKey = process.env.SUPABASE_ANON_KEY || '';
+// Safe environment variable access for browser environments
+const getEnv = (key: string): string => {
+  try {
+    // Check if process and process.env exist before accessing
+    if (typeof process !== 'undefined' && process.env && process.env[key]) {
+      return process.env[key] as string;
+    }
+    return '';
+  } catch (e) {
+    return '';
+  }
+};
 
-export const supabase = createClient(supabaseUrl, supabaseAnonKey);
+const supabaseUrl = getEnv('SUPABASE_URL');
+const supabaseAnonKey = getEnv('SUPABASE_ANON_KEY');
+
+// Create client only if credentials exist, otherwise return null
+// This prevents the app from crashing on initialization
+export const supabase = (supabaseUrl && supabaseAnonKey) 
+  ? createClient(supabaseUrl, supabaseAnonKey) 
+  : null;
