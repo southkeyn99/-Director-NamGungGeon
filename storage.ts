@@ -2,50 +2,60 @@
 import { PortfolioData } from './types';
 
 /**
- * Vercel Native Storage Service
- * 가장 단순한 Fetch 기반 인터페이스
+ * JSONbin.io 기반의 초간단 클라우드 스토리지 서비스
+ * 사용자가 관리자 페이지에서 설정한 ID와 KEY를 사용합니다.
  */
 export const storageService = {
-  // 1. 전체 데이터 불러오기 (Vercel Postgres/KV 연동)
+  getCredentials() {
+    return {
+      binId: localStorage.getItem('CLOUDSYNC_BIN_ID') || '',
+      apiKey: localStorage.getItem('CLOUDSYNC_API_KEY') || ''
+    };
+  },
+
   async getPortfolio(): Promise<PortfolioData | null> {
+    const { binId, apiKey } = this.getCredentials();
+    if (!binId || !apiKey) return null;
+
     try {
-      const response = await fetch('/api/portfolio');
+      const response = await fetch(`https://api.jsonbin.io/v3/b/${binId}/latest`, {
+        headers: { 'X-Master-Key': apiKey }
+      });
       if (!response.ok) return null;
-      return await response.json();
+      const result = await response.json();
+      return result.record as PortfolioData;
     } catch (err) {
-      console.error("Data fetch failed:", err);
+      console.error("Cloud load failed:", err);
       return null;
     }
   },
 
-  // 2. 전체 데이터 저장하기
   async savePortfolio(data: PortfolioData): Promise<void> {
-    const response = await fetch('/api/portfolio', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+    const { binId, apiKey } = this.getCredentials();
+    if (!binId || !apiKey) {
+      // 로컬에만 우선 저장 (클라우드 미연결 시)
+      localStorage.setItem('OFFLINE_PORTFOLIO_DATA', JSON.stringify(data));
+      return;
+    }
+
+    const response = await fetch(`https://api.jsonbin.io/v3/b/${binId}`, {
+      method: 'PUT',
+      headers: {
+        'Content-Type': 'application/json',
+        'X-Master-Key': apiKey
+      },
       body: JSON.stringify(data),
     });
-    
-    if (!response.ok) {
-      throw new Error('서버 저장 실패');
-    }
+
+    if (!response.ok) throw new Error('클라우드 저장 실패');
   },
 
-  // 3. 이미지 업로드 (Vercel Blob 연동)
+  // 이미지는 여전히 무료인 외부 서비스를 이용하거나 base64로 저장
   async uploadImage(file: File): Promise<string> {
-    const formData = new FormData();
-    formData.append('file', file);
-
-    const response = await fetch('/api/upload', {
-      method: 'POST',
-      body: formData,
+    return new Promise((resolve) => {
+      const reader = new FileReader();
+      reader.onloadend = () => resolve(reader.result as string);
+      reader.readAsDataURL(file);
     });
-
-    if (!response.ok) {
-      throw new Error('이미지 업로드 실패');
-    }
-
-    const { url } = await response.json();
-    return url;
   }
 };

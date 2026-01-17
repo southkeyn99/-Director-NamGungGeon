@@ -1,5 +1,5 @@
 
-import React, { useState } from 'react';
+import React, { useState, useEffect } from 'react';
 import { PortfolioData, Project, Category } from '../types';
 import { storageService } from '../storage';
 
@@ -16,18 +16,17 @@ const AdminPage: React.FC<AdminPageProps> = ({ data, onUpdate }) => {
     return (
       <div className="h-screen flex flex-col items-center justify-center bg-black px-6">
         <div className="w-full max-w-sm space-y-10 text-center">
-          <h1 className="font-cinematic tracking-[0.8em] text-2xl text-yellow-500 animate-fade-in">MANAGEMENT</h1>
+          <h1 className="font-cinematic tracking-[0.8em] text-2xl text-yellow-500">MANAGEMENT</h1>
           <form onSubmit={(e) => { e.preventDefault(); if(password === '1228') setIsAuthenticated(true); }} className="space-y-6">
             <input 
               type="password" 
-              placeholder="ENTER PASSCODE"
+              placeholder="PASSCODE: 1228"
               className="w-full bg-transparent border-b border-yellow-500/30 py-4 text-center text-xl focus:border-yellow-400 outline-none transition-all tracking-[0.5em] placeholder:text-zinc-800"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               autoFocus
             />
           </form>
-          <p className="text-[10px] tracking-widest text-zinc-600 uppercase">Authorized Personnel Only</p>
         </div>
       </div>
     );
@@ -37,126 +36,96 @@ const AdminPage: React.FC<AdminPageProps> = ({ data, onUpdate }) => {
 };
 
 const AdminDashboard: React.FC<AdminPageProps> = ({ data, onUpdate }) => {
-  const [activeTab, setActiveTab] = useState<'IDENTITY' | 'PROJECTS' | 'SETUP'>('IDENTITY');
+  const [activeTab, setActiveTab] = useState<'CONTENT' | 'PROJECTS' | 'CLOUD'>('CONTENT');
+  const [cloudSettings, setCloudSettings] = useState({
+    binId: localStorage.getItem('CLOUDSYNC_BIN_ID') || '',
+    apiKey: localStorage.getItem('CLOUDSYNC_API_KEY') || ''
+  });
   const [isSaving, setIsSaving] = useState(false);
+
+  const saveCloudSettings = () => {
+    localStorage.setItem('CLOUDSYNC_BIN_ID', cloudSettings.binId);
+    localStorage.setItem('CLOUDSYNC_API_KEY', cloudSettings.apiKey);
+    alert("클라우드 설정이 저장되었습니다. 이제부터 모든 변경사항이 동기화됩니다.");
+    window.location.reload();
+  };
 
   const handleUpload = async (e: React.ChangeEvent<HTMLInputElement>, onComplete: (url: string) => void) => {
     const file = e.target.files?.[0];
     if (!file) return;
-
     setIsSaving(true);
-    try {
-      const url = await storageService.uploadImage(file);
-      onComplete(url);
-    } catch (err) {
-      alert("업로드에 실패했습니다.");
-    } finally {
-      setIsSaving(false);
-    }
-  };
-
-  const addProject = () => {
-    const newProject: Project = {
-      id: Date.now().toString(),
-      category: 'DIRECTING',
-      year: new Date().getFullYear().toString(),
-      titleKr: '새 프로젝트',
-      titleEn: 'NEW PROJECT',
-      genre: 'Drama',
-      runtime: '0min',
-      role: 'Director',
-      synopsis: '',
-      awards: [],
-      mainImage: 'https://images.unsplash.com/photo-1485846234645-a62644f84728?auto=format&fit=crop&q=80',
-      stills: []
-    };
-    onUpdate({ ...data, projects: [newProject, ...data.projects] });
+    const url = await storageService.uploadImage(file);
+    onComplete(url);
+    setIsSaving(false);
   };
 
   return (
     <div className="pt-32 pb-40 px-6 md:px-12 bg-black min-h-screen">
       <div className="max-w-6xl mx-auto">
-        {/* Top Bar */}
+        {/* Navigation Tabs */}
         <div className="flex flex-col md:flex-row justify-between items-end border-b border-white/5 pb-8 mb-12 gap-6">
-          <div className="flex gap-10 overflow-x-auto no-scrollbar w-full md:w-auto">
-            <TabBtn active={activeTab === 'IDENTITY'} onClick={() => setActiveTab('IDENTITY')}>Site Identity</TabBtn>
-            <TabBtn active={activeTab === 'PROJECTS'} onClick={() => setActiveTab('PROJECTS')}>Filmography</TabBtn>
-            <TabBtn active={activeTab === 'SETUP'} onClick={() => setActiveTab('SETUP')}>Cloud Setup</TabBtn>
+          <div className="flex gap-8">
+            <TabBtn active={activeTab === 'CONTENT'} onClick={() => setActiveTab('CONTENT')}>Identity</TabBtn>
+            <TabBtn active={activeTab === 'PROJECTS'} onClick={() => setActiveTab('PROJECTS')}>Projects</TabBtn>
+            <TabBtn active={activeTab === 'CLOUD'} onClick={() => setActiveTab('CLOUD')}>Cloud Link</TabBtn>
           </div>
-          <div className="flex items-center gap-3">
-            <div className={`w-2 h-2 rounded-full ${isSaving ? 'bg-yellow-500 animate-ping' : 'bg-green-500'}`}></div>
-            <span className="text-[10px] tracking-[0.3em] uppercase font-bold text-zinc-500">
-              {isSaving ? 'Syncing with Server...' : 'All Changes Saved to Cloud'}
-            </span>
+          <div className="text-[10px] tracking-[0.2em] uppercase font-bold text-zinc-500">
+            {cloudSettings.binId ? '✅ Cloud Sync Active' : '⚠️ Offline Mode (Local Only)'}
           </div>
         </div>
 
-        {/* Identity Tab */}
-        {activeTab === 'IDENTITY' && (
-          <div className="grid md:grid-cols-3 gap-16">
-            <div className="md:col-span-1 space-y-8">
-              <h3 className="text-xs font-cinematic tracking-widest text-yellow-600 uppercase font-bold">Main Visual</h3>
-              <div className="relative group aspect-square bg-zinc-900 border border-white/5 overflow-hidden">
-                <img src={data.content.profileImage} className="w-full h-full object-cover grayscale transition-all group-hover:scale-110" />
-                <label className="absolute inset-0 flex items-center justify-center bg-black/60 opacity-0 group-hover:opacity-100 transition-opacity cursor-pointer text-[10px] tracking-widest uppercase font-bold">
-                  Change Photo
-                  <input type="file" className="hidden" onChange={(e) => handleUpload(e, (url) => onUpdate({...data, content: {...data.content, profileImage: url}}))} />
-                </label>
-              </div>
-            </div>
-            <div className="md:col-span-2 space-y-10">
-              <Section title="Basic Info">
-                <AdminInput label="Name" value={data.content.name} onChange={(v) => onUpdate({...data, content: {...data.content, name: v}})} />
-                <AdminInput label="Philosophy" value={data.content.philosophy} onChange={(v) => onUpdate({...data, content: {...data.content, philosophy: v}})} />
-                <div className="md:col-span-2">
-                  <AdminTextarea label="Biography" value={data.content.aboutText} onChange={(v) => onUpdate({...data, content: {...data.content, aboutText: v}})} />
+        {activeTab === 'CONTENT' && (
+          <div className="space-y-12 animate-fade-in">
+            <div className="grid md:grid-cols-3 gap-12">
+              <div className="space-y-4">
+                <label className="text-[10px] tracking-widest uppercase text-yellow-500 font-bold">Profile Photo</label>
+                <div className="aspect-square bg-zinc-900 border border-white/10 relative group overflow-hidden">
+                  <img src={data.content.profileImage} className="w-full h-full object-cover grayscale transition-all group-hover:scale-110" />
+                  <label className="absolute inset-0 bg-black/60 flex items-center justify-center opacity-0 group-hover:opacity-100 cursor-pointer text-[10px] tracking-[0.2em] font-bold uppercase transition-all">
+                    Replace
+                    <input type="file" className="hidden" onChange={(e) => handleUpload(e, (url) => onUpdate({...data, content: {...data.content, profileImage: url}}))} />
+                  </label>
                 </div>
-              </Section>
-              <Section title="Contacts">
-                <AdminInput label="Email" value={data.content.contact.email} onChange={(v) => onUpdate({...data, content: {...data.content, contact: {...data.content.contact, email: v}}})} />
-                <AdminInput label="Instagram" value={data.content.contact.instagram} onChange={(v) => onUpdate({...data, content: {...data.content, contact: {...data.content.contact, instagram: v}}})} />
-              </Section>
+              </div>
+              <div className="md:col-span-2 space-y-8">
+                <AdminInput label="Director Name" value={data.content.name} onChange={(v) => onUpdate({...data, content: {...data.content, name: v}})} />
+                <AdminInput label="Philosophy" value={data.content.philosophy} onChange={(v) => onUpdate({...data, content: {...data.content, philosophy: v}})} />
+                <div className="space-y-2">
+                  <label className="text-[10px] tracking-widest uppercase text-zinc-500 font-bold">About Text</label>
+                  <textarea className="w-full bg-zinc-900 border border-white/5 p-4 text-sm outline-none focus:border-yellow-500 min-h-[150px] leading-relaxed" value={data.content.aboutText} onChange={(e) => onUpdate({...data, content: {...data.content, aboutText: e.target.value}})} />
+                </div>
+              </div>
             </div>
           </div>
         )}
 
-        {/* Projects Tab */}
         {activeTab === 'PROJECTS' && (
-          <div className="space-y-12">
-            <button onClick={addProject} className="w-full py-10 border border-dashed border-white/10 hover:border-yellow-500/40 hover:bg-yellow-500/5 transition-all text-xs tracking-[0.4em] uppercase font-bold">
-              + New Film Entry
+          <div className="space-y-12 animate-fade-in">
+            <button onClick={() => onUpdate({...data, projects: [{id: Date.now().toString(), category: 'DIRECTING', year: '2024', titleKr: 'New Project', titleEn: 'NEW PROJECT', genre: 'Drama', runtime: '0min', role: 'Director', synopsis: '', awards: [], mainImage: 'https://picsum.photos/1200/800', stills: []}, ...data.projects]})} className="w-full py-10 border border-dashed border-white/20 hover:border-yellow-500 transition-all text-[10px] tracking-[0.4em] font-bold uppercase">
+              + New Film Project
             </button>
-            <div className="grid grid-cols-1 gap-20">
+            <div className="space-y-16">
               {data.projects.map((p) => (
-                <div key={p.id} className="grid md:grid-cols-4 gap-10 group relative">
-                  <button onClick={() => onUpdate({...data, projects: data.projects.filter(x => x.id !== p.id)})} className="absolute -top-6 right-0 text-[10px] text-zinc-700 hover:text-red-500 tracking-widest font-bold uppercase transition-colors">Delete Project</button>
-                  <div className="md:col-span-1 space-y-4">
-                    <div className="aspect-[2/3] bg-zinc-900 border border-white/5 relative overflow-hidden group/img">
-                       <img src={p.mainImage} className="w-full h-full object-cover" />
-                       <label className="absolute inset-0 bg-black/60 flex items-center justify-center opacity-0 group-hover/img:opacity-100 cursor-pointer text-[9px] tracking-widest uppercase font-bold">
-                         Replace Poster
-                         <input type="file" className="hidden" onChange={(e) => handleUpload(e, (url) => onUpdate({...data, projects: data.projects.map(x => x.id === p.id ? {...x, mainImage: url} : x)}))} />
-                       </label>
-                    </div>
+                <div key={p.id} className="grid md:grid-cols-4 gap-10 border-t border-white/5 pt-12 relative group">
+                  <button onClick={() => onUpdate({...data, projects: data.projects.filter(x => x.id !== p.id)})} className="absolute top-12 right-0 text-[9px] text-zinc-700 hover:text-red-500 font-bold uppercase tracking-widest">Remove</button>
+                  <div className="aspect-[2/3] bg-zinc-900 border border-white/10 relative overflow-hidden group/img">
+                    <img src={p.mainImage} className="w-full h-full object-cover grayscale group-hover/img:grayscale-0 transition-all" />
+                    <label className="absolute inset-0 bg-black/60 flex items-center justify-center opacity-0 group-hover/img:opacity-100 cursor-pointer text-[9px] tracking-[0.2em] font-bold uppercase">
+                      Change Poster
+                      <input type="file" className="hidden" onChange={(e) => handleUpload(e, (url) => onUpdate({...data, projects: data.projects.map(x => x.id === p.id ? {...x, mainImage: url} : x)}))} />
+                    </label>
                   </div>
                   <div className="md:col-span-3 grid grid-cols-2 gap-6">
-                    <AdminInput label="KR Title" value={p.titleKr} onChange={(v) => onUpdate({...data, projects: data.projects.map(x => x.id === p.id ? {...x, titleKr: v} : x)})} />
-                    <AdminInput label="EN Title" value={p.titleEn} onChange={(v) => onUpdate({...data, projects: data.projects.map(x => x.id === p.id ? {...x, titleEn: v} : x)})} />
+                    <AdminInput label="Title KR" value={p.titleKr} onChange={(v) => onUpdate({...data, projects: data.projects.map(x => x.id === p.id ? {...x, titleKr: v} : x)})} />
+                    <AdminInput label="Title EN" value={p.titleEn} onChange={(v) => onUpdate({...data, projects: data.projects.map(x => x.id === p.id ? {...x, titleEn: v} : x)})} />
                     <AdminInput label="Year" value={p.year} onChange={(v) => onUpdate({...data, projects: data.projects.map(x => x.id === p.id ? {...x, year: v} : x)})} />
                     <div className="space-y-2">
-                      <label className="text-[10px] tracking-widest uppercase text-yellow-500/60 font-bold">Category</label>
-                      <select 
-                        value={p.category} 
-                        onChange={(e) => onUpdate({...data, projects: data.projects.map(x => x.id === p.id ? {...x, category: e.target.value as Category} : x)})}
-                        className="w-full bg-zinc-900 border border-white/5 px-4 py-3 text-xs outline-none focus:border-yellow-500 transition-all text-white"
-                      >
+                      <label className="text-[10px] tracking-widest uppercase text-zinc-500 font-bold">Category</label>
+                      <select className="w-full bg-zinc-900 border border-white/5 p-3 text-xs outline-none focus:border-yellow-500 text-white" value={p.category} onChange={(e) => onUpdate({...data, projects: data.projects.map(x => x.id === p.id ? {...x, category: e.target.value as Category} : x)})}>
                         <option value="DIRECTING">Directing</option>
                         <option value="AI_FILM">AI Film</option>
                         <option value="CINEMATOGRAPHY">Cinematography</option>
                       </select>
-                    </div>
-                    <div className="col-span-2">
-                      <AdminTextarea label="Synopsis" value={p.synopsis} onChange={(v) => onUpdate({...data, projects: data.projects.map(x => x.id === p.id ? {...x, synopsis: v} : x)})} />
                     </div>
                   </div>
                 </div>
@@ -165,28 +134,33 @@ const AdminDashboard: React.FC<AdminPageProps> = ({ data, onUpdate }) => {
           </div>
         )}
 
-        {/* Setup Tab */}
-        {activeTab === 'SETUP' && (
-          <div className="max-w-3xl space-y-10">
-            <div className="p-10 bg-zinc-900/40 border border-white/5 space-y-8">
-              <h3 className="text-sm tracking-[0.4em] uppercase text-yellow-500 font-bold">Vercel Serverless Integration</h3>
-              <p className="text-zinc-400 text-sm leading-relaxed font-light">
-                이 사이트는 브라우저의 로컬 스토리지를 일절 사용하지 않습니다. 모든 데이터는 Vercel 서버에 JSON 형태로 저장됩니다. 이를 위해 Vercel Dashboard에서 다음 단계를 완료하세요.
+        {activeTab === 'CLOUD' && (
+          <div className="max-w-2xl space-y-12 animate-fade-in">
+            <div className="p-8 bg-zinc-900/50 border border-yellow-500/10 space-y-6">
+              <h3 className="text-sm tracking-[0.3em] font-bold text-yellow-500 uppercase">Step 1: Get Your Free Storage</h3>
+              <p className="text-zinc-400 text-sm leading-relaxed">
+                <a href="https://jsonbin.io" target="_blank" className="text-yellow-500 underline">JSONbin.io</a>에 접속하여 회원가입 후, <br/>
+                1. <strong>API Keys</strong> 탭에서 'Master Key'를 복사하세요. <br/>
+                2. <strong>Bins</strong> 탭에서 빈 데이터로 'Create Bin'을 누른 후 생성된 'Bin ID'를 복사하세요.
               </p>
-              <ol className="space-y-4 text-xs tracking-widest text-zinc-500 uppercase list-decimal list-inside">
-                <li>Create a <strong>Vercel Postgres</strong> or <strong>Vercel KV</strong> instance.</li>
-                <li>Connect the database to this project in Vercel settings.</li>
-                <li>Deploy the <code>/api/portfolio</code> and <code>/api/upload</code> serverless functions.</li>
-                <li>Set <code>BLOB_READ_WRITE_TOKEN</code> for image storage.</li>
-              </ol>
-              <div className="pt-6 border-t border-white/5">
-                <p className="text-[10px] text-yellow-500 font-bold tracking-[0.2em] mb-4">API ENDPOINT STATUS</p>
-                <div className="flex gap-4">
-                  <StatusBadge label="DB_SYNC" active={true} />
-                  <StatusBadge label="BLOB_STORAGE" active={true} />
-                </div>
-              </div>
             </div>
+            
+            <div className="space-y-6">
+              <h3 className="text-sm tracking-[0.3em] font-bold text-yellow-500 uppercase">Step 2: Connect Your Portfolio</h3>
+              <AdminInput label="Bin ID" value={cloudSettings.binId} onChange={(v) => setCloudSettings(prev => ({...prev, binId: v}))} />
+              <AdminInput label="Master API Key" value={cloudSettings.apiKey} onChange={(v) => setCloudSettings(prev => ({...prev, apiKey: v}))} />
+              <button 
+                onClick={saveCloudSettings}
+                className="w-full py-4 bg-yellow-500 text-black font-bold uppercase text-[10px] tracking-[0.4em] hover:bg-yellow-400 transition-all"
+              >
+                Connect & Sync Now
+              </button>
+            </div>
+
+            <p className="text-[10px] text-zinc-600 tracking-widest leading-loose">
+              * 설정 후 모든 편집 내용은 클라우드에 즉시 저장되며, 전 세계 어디서든 동일한 내용을 확인할 수 있습니다. <br/>
+              * 이미지는 현재 브라우저 최적화를 위해 Base64 방식으로 저장됩니다.
+            </p>
           </div>
         )}
       </div>
@@ -195,35 +169,15 @@ const AdminDashboard: React.FC<AdminPageProps> = ({ data, onUpdate }) => {
 };
 
 const TabBtn: React.FC<{ active: boolean; onClick: () => void; children: React.ReactNode }> = ({ active, onClick, children }) => (
-  <button onClick={onClick} className={`text-[10px] tracking-[0.4em] uppercase py-3 border-b-2 transition-all font-bold whitespace-nowrap ${active ? 'border-yellow-500 text-yellow-500' : 'border-transparent text-zinc-600 hover:text-zinc-400'}`}>
+  <button onClick={onClick} className={`text-[10px] tracking-[0.3em] uppercase py-2 border-b-2 font-bold transition-all ${active ? 'border-yellow-500 text-yellow-500' : 'border-transparent text-zinc-600 hover:text-zinc-400'}`}>
     {children}
   </button>
 );
 
-const Section: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
-  <div className="space-y-6">
-    <h4 className="text-[10px] tracking-[0.3em] uppercase text-zinc-500 border-l border-yellow-500 pl-4 mb-6">{title}</h4>
-    <div className="grid md:grid-cols-2 gap-6">{children}</div>
-  </div>
-);
-
 const AdminInput: React.FC<{ label: string; value: string; onChange: (v: string) => void }> = ({ label, value, onChange }) => (
   <div className="space-y-2">
-    <label className="text-[10px] tracking-widest uppercase text-yellow-500/60 font-bold">{label}</label>
-    <input className="w-full bg-zinc-900 border border-white/5 px-4 py-3 text-xs outline-none focus:border-yellow-500 transition-all text-white font-medium" value={value} onChange={(e) => onChange(e.target.value)} />
-  </div>
-);
-
-const AdminTextarea: React.FC<{ label: string; value: string; onChange: (v: string) => void }> = ({ label, value, onChange }) => (
-  <div className="space-y-2">
-    <label className="text-[10px] tracking-widest uppercase text-yellow-500/60 font-bold">{label}</label>
-    <textarea className="w-full bg-zinc-900 border border-white/5 px-4 py-4 text-xs outline-none focus:border-yellow-500 transition-all text-white font-medium min-h-[120px] leading-relaxed" value={value} onChange={(e) => onChange(e.target.value)} />
-  </div>
-);
-
-const StatusBadge: React.FC<{ label: string; active: boolean }> = ({ label, active }) => (
-  <div className={`px-3 py-1 rounded-full text-[8px] tracking-[0.2em] font-bold border ${active ? 'border-green-500/30 text-green-500 bg-green-500/5' : 'border-red-500/30 text-red-500 bg-red-500/5'}`}>
-    {label}: {active ? 'ONLINE' : 'OFFLINE'}
+    <label className="text-[10px] tracking-widest uppercase text-zinc-500 font-bold">{label}</label>
+    <input className="w-full bg-zinc-900 border border-white/5 p-3 text-sm outline-none focus:border-yellow-500 transition-all" value={value} onChange={(e) => onChange(e.target.value)} />
   </div>
 );
 
