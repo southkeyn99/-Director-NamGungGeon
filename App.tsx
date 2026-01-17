@@ -4,7 +4,6 @@ import { HashRouter, Routes, Route, Link, useLocation } from 'react-router-dom';
 import { PortfolioData } from './types';
 import { INITIAL_DATA } from './constants';
 import { storageService } from './storage';
-import { supabase } from './supabase';
 
 // Pages
 import HomePage from './pages/HomePage';
@@ -18,49 +17,37 @@ import AdminPage from './pages/AdminPage';
 const App: React.FC = () => {
   const [data, setData] = useState<PortfolioData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [connectionStatus, setConnectionStatus] = useState<'CONNECTED' | 'DISCONNECTED' | 'ERROR'>('DISCONNECTED');
+  const [error, setError] = useState<string | null>(null);
 
-  // Strictly fetch from Server on Mount
+  // 앱 로드 시 서버에서 데이터 가져오기 (단 한 번)
   useEffect(() => {
-    const initApp = async () => {
-      if (!supabase) {
+    const loadServerData = async () => {
+      setLoading(true);
+      const serverData = await storageService.getPortfolio();
+      
+      if (serverData) {
+        setData(serverData);
+      } else {
+        // 서버에 데이터가 없으면 초기값 세팅 (첫 배포 시)
         setData(INITIAL_DATA);
-        setConnectionStatus('DISCONNECTED');
-        setLoading(false);
-        return;
+        console.log("Using initial default data");
       }
-
-      try {
-        const dbData = await storageService.getPortfolio();
-        if (dbData) {
-          setData(dbData);
-          setConnectionStatus('CONNECTED');
-        } else {
-          // If table is empty but DB connected, seed with initial data
-          await storageService.savePortfolio(INITIAL_DATA);
-          setData(INITIAL_DATA);
-          setConnectionStatus('CONNECTED');
-        }
-      } catch (err) {
-        console.error("Critical Connection Error:", err);
-        setData(INITIAL_DATA);
-        setConnectionStatus('ERROR');
-      } finally {
-        setLoading(false);
-      }
+      setLoading(false);
     };
 
-    initApp();
+    loadServerData();
   }, []);
 
+  // 데이터 업데이트 함수 (서버 동기화 포함)
   const handleUpdate = async (newData: PortfolioData) => {
-    setData(newData); // Immediate UI update
+    setData(newData); // UI 즉시 반영
     
     try {
       await storageService.savePortfolio(newData);
     } catch (err) {
-      console.error("Cloud Sync Failed:", err);
-      alert("서버 저장에 실패했습니다. 연결 상태를 확인하세요.");
+      console.error("Server Sync Error:", err);
+      setError("데이터 서버 저장에 실패했습니다.");
+      setTimeout(() => setError(null), 3000);
     }
   };
 
@@ -69,7 +56,7 @@ const App: React.FC = () => {
       <div className="h-screen w-full bg-black flex items-center justify-center">
         <div className="text-center space-y-4">
           <div className="font-cinematic text-2xl tracking-[0.5em] animate-pulse">PORTFOLIO</div>
-          <p className="text-[10px] tracking-widest text-yellow-500/50 uppercase">Syncing with Server...</p>
+          <p className="text-[10px] tracking-widest text-yellow-500/50 uppercase font-bold">Server Connecting...</p>
         </div>
       </div>
     );
@@ -77,13 +64,15 @@ const App: React.FC = () => {
 
   return (
     <HashRouter>
-      <div className="min-h-screen bg-black text-white selection:bg-yellow-400 selection:text-black">
-        {connectionStatus !== 'CONNECTED' && (
-          <div className="fixed top-0 left-0 w-full bg-red-500/20 text-red-400 text-[8px] tracking-[0.3em] uppercase py-1 text-center z-[200] backdrop-blur-sm border-b border-red-500/30">
-            Warning: Server Disconnected. Changes will not be saved.
+      <div className="min-h-screen bg-black text-white selection:bg-yellow-400 selection:text-black font-sans">
+        {error && (
+          <div className="fixed top-0 left-0 w-full bg-red-600 text-white text-[10px] tracking-widest uppercase py-2 text-center z-[300] font-bold">
+            {error}
           </div>
         )}
+        
         <Navigation />
+        
         <main>
           <Routes>
             <Route path="/" element={<HomePage data={data} />} />
@@ -113,27 +102,27 @@ const Navigation: React.FC = () => {
 
   return (
     <>
-      <nav className={`fixed top-0 left-0 w-full z-[100] flex items-center justify-between px-6 md:px-8 py-6 transition-all duration-500 ${isHome && !isMenuOpen ? 'bg-transparent' : 'bg-black/90 backdrop-blur-md border-b border-white/5'}`}>
-        <Link to="/" className="font-cinematic text-lg md:text-xl tracking-[0.3em] font-bold hover:text-yellow-400 transition-colors">
+      <nav className={`fixed top-0 left-0 w-full z-[100] flex items-center justify-between px-6 md:px-12 py-8 transition-all duration-700 ${isHome && !isMenuOpen ? 'bg-transparent' : 'bg-black/95 backdrop-blur-xl border-b border-white/5'}`}>
+        <Link to="/" className="font-cinematic text-xl md:text-2xl tracking-[0.4em] font-bold hover:text-yellow-400 transition-all duration-300">
           PORTFOLIO
         </Link>
-        <div className="hidden md:flex gap-8 text-[11px] font-medium tracking-[0.2em] uppercase">
+        <div className="hidden md:flex gap-10 text-[10px] font-bold tracking-[0.3em] uppercase">
           <NavLink to="/about">About</NavLink>
           <NavLink to="/directing">Directing</NavLink>
           <NavLink to="/ai-film">AI Film</NavLink>
           <NavLink to="/cinematography">Cinematography</NavLink>
           <NavLink to="/staff">Staff</NavLink>
           <NavLink to="/contact">Contact</NavLink>
-          <NavLink to="/admin" className="text-gray-500">Admin</NavLink>
+          <NavLink to="/admin" className="text-gray-600 opacity-50 hover:opacity-100">Admin</NavLink>
         </div>
-        <button onClick={() => setIsMenuOpen(!isMenuOpen)} className="md:hidden flex flex-col gap-1.5 p-2 focus:outline-none z-[110]">
-          <span className={`w-6 h-[1px] bg-white transition-transform duration-300 ${isMenuOpen ? 'rotate-45 translate-y-2 !bg-yellow-400' : ''}`}></span>
-          <span className={`w-6 h-[1px] bg-white transition-opacity duration-300 ${isMenuOpen ? 'opacity-0' : ''}`}></span>
-          <span className={`w-6 h-[1px] bg-white transition-transform duration-300 ${isMenuOpen ? '-rotate-45 -translate-y-2 !bg-yellow-400' : ''}`}></span>
+        <button onClick={() => setIsMenuOpen(!isMenuOpen)} className="md:hidden flex flex-col gap-2 p-2 focus:outline-none z-[110]">
+          <span className={`w-8 h-[1px] bg-white transition-all duration-500 ${isMenuOpen ? 'rotate-45 translate-y-2.5 !bg-yellow-400' : ''}`}></span>
+          <span className={`w-8 h-[1px] bg-white transition-all duration-500 ${isMenuOpen ? 'opacity-0' : ''}`}></span>
+          <span className={`w-8 h-[1px] bg-white transition-all duration-500 ${isMenuOpen ? '-rotate-45 -translate-y-2.5 !bg-yellow-400' : ''}`}></span>
         </button>
       </nav>
-      <div className={`fixed inset-0 bg-black z-[90] flex flex-col items-center justify-center gap-8 transition-all duration-500 md:hidden ${isMenuOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none translate-y-4'}`}>
-        <div className="flex flex-col items-center gap-10 text-sm tracking-[0.4em] uppercase font-light">
+      <div className={`fixed inset-0 bg-black z-[90] flex flex-col items-center justify-center gap-10 transition-all duration-700 md:hidden ${isMenuOpen ? 'opacity-100' : 'opacity-0 pointer-events-none translate-y-10'}`}>
+        <div className="flex flex-col items-center gap-12 text-lg tracking-[0.5em] uppercase font-light">
           <Link to="/about" onClick={() => setIsMenuOpen(false)}>About</Link>
           <Link to="/directing" onClick={() => setIsMenuOpen(false)}>Directing</Link>
           <Link to="/ai-film" onClick={() => setIsMenuOpen(false)}>AI Film</Link>
@@ -151,9 +140,9 @@ const NavLink: React.FC<{ to: string; children: React.ReactNode; className?: str
   const location = useLocation();
   const isActive = location.pathname === to;
   return (
-    <Link to={to} className={`hover:text-yellow-400 transition-colors relative ${isActive ? 'text-yellow-400' : ''} ${className}`}>
+    <Link to={to} className={`hover:text-yellow-400 transition-colors relative group ${isActive ? 'text-yellow-400' : ''} ${className}`}>
       {children}
-      {isActive && <span className="absolute -bottom-1 left-0 w-full h-[1px] bg-yellow-400"></span>}
+      <span className={`absolute -bottom-2 left-0 h-[1px] bg-yellow-400 transition-all duration-500 ${isActive ? 'w-full' : 'w-0 group-hover:w-full'}`}></span>
     </Link>
   );
 };

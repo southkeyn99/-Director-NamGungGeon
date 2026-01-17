@@ -1,54 +1,51 @@
 
 import { PortfolioData } from './types';
-import { supabase } from './supabase';
 
+/**
+ * Vercel Native Storage Service
+ * 가장 단순한 Fetch 기반 인터페이스
+ */
 export const storageService = {
-  // Fetch site data from Supabase DB
+  // 1. 전체 데이터 불러오기 (Vercel Postgres/KV 연동)
   async getPortfolio(): Promise<PortfolioData | null> {
-    if (!supabase) return null;
-
-    const { data, error } = await supabase
-      .from('portfolio')
-      .select('data')
-      .eq('id', 1)
-      .single();
-
-    if (error) {
-      console.warn("Database fetch error:", error.message);
+    try {
+      const response = await fetch('/api/portfolio');
+      if (!response.ok) return null;
+      return await response.json();
+    } catch (err) {
+      console.error("Data fetch failed:", err);
       return null;
     }
-    return data?.data as PortfolioData;
   },
 
-  // Save site data to Supabase DB (Instant Update)
+  // 2. 전체 데이터 저장하기
   async savePortfolio(data: PortfolioData): Promise<void> {
-    if (!supabase) throw new Error("Supabase client not initialized");
-
-    const { error } = await supabase
-      .from('portfolio')
-      .upsert({ id: 1, data: data, updated_at: new Date().toISOString() });
-
-    if (error) throw error;
+    const response = await fetch('/api/portfolio', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(data),
+    });
+    
+    if (!response.ok) {
+      throw new Error('서버 저장 실패');
+    }
   },
 
-  // Upload image to Supabase Storage Bucket ('media')
+  // 3. 이미지 업로드 (Vercel Blob 연동)
   async uploadImage(file: File): Promise<string> {
-    if (!supabase) throw new Error("Supabase client not initialized");
+    const formData = new FormData();
+    formData.append('file', file);
 
-    const fileExt = file.name.split('.').pop();
-    const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
-    const filePath = `uploads/${fileName}`;
+    const response = await fetch('/api/upload', {
+      method: 'POST',
+      body: formData,
+    });
 
-    const { error: uploadError } = await supabase.storage
-      .from('media')
-      .upload(filePath, file);
+    if (!response.ok) {
+      throw new Error('이미지 업로드 실패');
+    }
 
-    if (uploadError) throw uploadError;
-
-    const { data: { publicUrl } } = supabase.storage
-      .from('media')
-      .getPublicUrl(filePath);
-
-    return publicUrl;
+    const { url } = await response.json();
+    return url;
   }
 };
