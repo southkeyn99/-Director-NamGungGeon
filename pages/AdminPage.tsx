@@ -49,14 +49,23 @@ const AdminDashboard: React.FC<AdminPageProps> = ({ data, onUpdate }) => {
   const [activeTab, setActiveTab] = useState<'CONTENT' | 'PROJECTS' | 'STAFF' | 'SYSTEM'>('CONTENT');
   const [isProcessing, setIsProcessing] = useState(false);
 
-  // Upload image to Supabase Storage instead of converting to Base64
   const uploadToSupabase = async (file: File): Promise<string> => {
-    const fileName = `${Date.now()}-${file.name.replace(/\s/g, '_')}`;
-    const { data: uploadData, error } = await supabase.storage
-      .from('media') // Make sure this bucket is public in Supabase
-      .upload(fileName, file);
+    if (!supabase) throw new Error("Supabase client is not initialized. Check your environment variables.");
 
-    if (error) throw error;
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
+    
+    const { data: uploadData, error } = await supabase.storage
+      .from('media')
+      .upload(fileName, file, {
+        cacheControl: '3600',
+        upsert: false
+      });
+
+    if (error) {
+      // Provide detailed error message from Supabase
+      throw new Error(`Supabase Storage Error: ${error.message}`);
+    }
 
     const { data: { publicUrl } } = supabase.storage
       .from('media')
@@ -71,13 +80,13 @@ const AdminDashboard: React.FC<AdminPageProps> = ({ data, onUpdate }) => {
 
     setIsProcessing(true);
     try {
-      // Fix: Explicitly type 'file' as 'File' to resolve 'unknown' inference error from Array.from(FileList)
       const uploadPromises = Array.from(files).map((file: File) => uploadToSupabase(file));
       const urls = await Promise.all(uploadPromises);
       callback(urls);
-    } catch (err) {
+    } catch (err: any) {
       console.error("Cloud upload failed", err);
-      alert("Image upload to server failed. Please check bucket permissions.");
+      // Show the specific error to the user for better debugging
+      alert(err.message || "Image upload failed. Please check your Supabase Storage settings.");
     } finally {
       setIsProcessing(false);
     }
@@ -260,14 +269,39 @@ const AdminDashboard: React.FC<AdminPageProps> = ({ data, onUpdate }) => {
         )}
 
         {activeTab === 'SYSTEM' && (
-          <div className="space-y-8 p-8 bg-zinc-900/50 border border-white/5">
-            <h3 className="text-xs tracking-widest uppercase text-yellow-500 font-bold">Server Deployment Status</h3>
-            <p className="text-sm text-gray-400 leading-relaxed">
-              이 페이지에서 수정하는 모든 내용은 즉시 **Supabase 클라우드 데이터베이스**에 저장됩니다.
-              Vercel에 배포된 후에도 모든 방문자는 실시간으로 업데이트된 내용을 보게 됩니다.
-            </p>
-            <div className="p-4 border border-green-500/20 bg-green-500/5 text-[10px] tracking-widest text-green-500 uppercase">
-              Connected to Backend Database: Live
+          <div className="space-y-12">
+            <div className="p-8 bg-zinc-900/50 border border-white/5 space-y-6">
+              <h3 className="text-xs tracking-widest uppercase text-yellow-500 font-bold">Cloud Sync Status</h3>
+              <div className="p-4 border border-green-500/20 bg-green-500/5 text-[10px] tracking-widest text-green-500 uppercase">
+                Database Connection: {supabase ? 'Live' : 'Disconnected (Check Env Vars)'}
+              </div>
+              <p className="text-sm text-gray-400 leading-relaxed">
+                모든 변경사항은 Supabase 클라우드에 즉시 저장됩니다.
+              </p>
+            </div>
+
+            <div className="p-8 bg-zinc-900/50 border border-red-500/20 space-y-6">
+              <h3 className="text-xs tracking-widest uppercase text-red-500 font-bold">Troubleshooting: Image Upload Fail</h3>
+              <p className="text-xs text-gray-400">
+                이미지 업로드 시 "Permission denied" 에러가 발생한다면 Supabase SQL Editor에서 아래 명령어를 실행하세요.
+              </p>
+              <div className="relative group">
+                <pre className="bg-black p-4 text-[10px] font-mono text-yellow-500/80 overflow-x-auto border border-white/10">
+{`-- 1. 'media' 버킷 생성 확인 (Public으로 설정 필수)
+-- 2. 모든 사용자(익명 포함)에게 업로드 및 조회 권한 부여
+CREATE POLICY "Public Access" ON storage.objects FOR SELECT USING ( bucket_id = 'media' );
+CREATE POLICY "Public Upload" ON storage.objects FOR INSERT WITH CHECK ( bucket_id = 'media' );`}
+                </pre>
+                <button 
+                  onClick={() => navigator.clipboard.writeText(`CREATE POLICY "Public Access" ON storage.objects FOR SELECT USING ( bucket_id = 'media' );\nCREATE POLICY "Public Upload" ON storage.objects FOR INSERT WITH CHECK ( bucket_id = 'media' );`)}
+                  className="absolute top-2 right-2 bg-zinc-800 px-2 py-1 text-[8px] uppercase tracking-widest opacity-0 group-hover:opacity-100 transition-opacity"
+                >
+                  Copy SQL
+                </button>
+              </div>
+              <p className="text-[10px] text-gray-500 italic">
+                * Supabase Dashboard > Storage > Buckets 에서 'media' 버킷을 먼저 생성해야 합니다.
+              </p>
             </div>
           </div>
         )}
