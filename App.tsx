@@ -24,15 +24,15 @@ const App: React.FC = () => {
       setLoading(true);
       try {
         const serverData = await storageService.getPortfolio();
-        // 데이터가 없거나 형식이 잘못된 경우 초기 데이터 사용
         if (serverData && serverData.content) {
           setData(serverData);
         } else {
           setData(INITIAL_DATA);
         }
-      } catch (err) {
+      } catch (err: any) {
         console.error("Critical Load Error:", err);
-        setData(INITIAL_DATA); // 에러 발생 시 무조건 초기 데이터로 앱 시작
+        setError(err.message || "데이터를 불러오는 중 오류가 발생했습니다.");
+        setData(INITIAL_DATA);
       } finally {
         setLoading(false);
       }
@@ -41,15 +41,8 @@ const App: React.FC = () => {
     loadServerData();
   }, []);
 
-  const handleUpdate = async (newData: PortfolioData) => {
+  const handleUpdate = (newData: PortfolioData) => {
     setData(newData);
-    try {
-      await storageService.savePortfolio(newData);
-    } catch (err) {
-      console.error("Server Sync Error:", err);
-      setError("서버 저장 실패 (네트워크나 키 확인 필요)");
-      setTimeout(() => setError(null), 3000);
-    }
   };
 
   if (loading) {
@@ -74,13 +67,13 @@ const App: React.FC = () => {
     );
   }
 
-  // 데이터가 로드된 후 렌더링
   return (
     <HashRouter>
       <div className="min-h-screen bg-black text-white selection:bg-yellow-400 selection:text-black font-sans">
         {error && (
-          <div className="fixed top-0 left-0 w-full bg-yellow-600 text-black text-[10px] tracking-widest uppercase py-3 text-center z-[300] font-bold shadow-2xl">
-            {error}
+          <div className="fixed top-0 left-0 w-full bg-red-600 text-white text-[10px] tracking-widest uppercase py-3 text-center z-[300] font-bold shadow-2xl flex items-center justify-center gap-4">
+            <span>{error}</span>
+            <button onClick={() => setError(null)} className="bg-black/20 px-2 py-1 hover:bg-black/40">Close</button>
           </div>
         )}
         
@@ -100,10 +93,6 @@ const App: React.FC = () => {
           </Routes>
         </main>
       </div>
-      <style>{`
-        .animate-fade-in-quick { animation: fadeIn 0.8s ease-out; }
-        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
-      `}</style>
     </HashRouter>
   );
 };

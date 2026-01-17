@@ -5,12 +5,11 @@ import { INITIAL_DATA } from './constants';
 export const storageService = {
   getCredentials() {
     return {
-      binId: localStorage.getItem('CLOUDSYNC_BIN_ID') || '',
-      apiKey: localStorage.getItem('CLOUDSYNC_API_KEY') || ''
+      binId: (localStorage.getItem('CLOUDSYNC_BIN_ID') || '').trim(),
+      apiKey: (localStorage.getItem('CLOUDSYNC_API_KEY') || '').trim()
     };
   },
 
-  // 데이터 구조가 올바른지 확인하는 보조 함수
   isValidData(data: any): data is PortfolioData {
     return data && typeof data === 'object' && 'content' in data && 'projects' in data;
   },
@@ -25,22 +24,22 @@ export const storageService = {
         cache: 'no-cache'
       });
       
-      if (!response.ok) return null;
+      if (response.status === 401 || response.status === 403) throw new Error('API Key가 올바르지 않습니다.');
+      if (response.status === 404) throw new Error('Bin ID를 찾을 수 없습니다.');
+      if (!response.ok) throw new Error(`서버 응답 오류: ${response.status}`);
       
       const result = await response.json();
       const remoteData = result.record;
 
-      // 만약 서버 데이터가 비어있거나 형식이 맞지 않으면 초기 데이터를 반환하고 서버에 저장 시도
       if (!this.isValidData(remoteData)) {
-        console.warn("Server data is empty or invalid. Initializing...");
         await this.savePortfolio(INITIAL_DATA);
         return INITIAL_DATA;
       }
 
       return remoteData as PortfolioData;
-    } catch (err) {
+    } catch (err: any) {
       console.error("Cloud load failed:", err);
-      return null;
+      throw err;
     }
   },
 
@@ -61,14 +60,23 @@ export const storageService = {
         body: JSON.stringify(data),
       });
 
-      if (!response.ok) throw new Error('클라우드 저장 실패');
-    } catch (err) {
+      if (response.status === 413) throw new Error('데이터 용량이 너무 큽니다. 사진 크기를 줄여주세요.');
+      if (response.status === 429) throw new Error('너무 자주 저장 시도를 했습니다. 잠시 후 다시 시도하세요.');
+      if (response.status === 401 || response.status === 403) throw new Error('API Key 인증에 실패했습니다.');
+      
+      if (!response.ok) throw new Error(`저장 실패 (${response.status})`);
+    } catch (err: any) {
       console.error("Save error:", err);
       throw err;
     }
   },
 
   async uploadImage(file: File): Promise<string> {
+    // 이미지 용량이 너무 크면 압축 권고 (약 1MB 이상인 경우)
+    if (file.size > 1 * 1024 * 1024) {
+      console.warn("Large image detected. This might cause storage failure.");
+    }
+    
     return new Promise((resolve) => {
       const reader = new FileReader();
       reader.onloadend = () => resolve(reader.result as string);
