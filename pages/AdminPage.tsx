@@ -46,8 +46,9 @@ const AdminPage: React.FC<AdminPageProps> = ({ data, onUpdate }) => {
 };
 
 const AdminDashboard: React.FC<AdminPageProps> = ({ data, onUpdate }) => {
-  const [activeTab, setActiveTab] = useState<'CONTENT' | 'PROJECTS' | 'STAFF'>('CONTENT');
+  const [activeTab, setActiveTab] = useState<'CONTENT' | 'PROJECTS' | 'STAFF' | 'SYSTEM'>('CONTENT');
   const [isProcessing, setIsProcessing] = useState(false);
+  const [copySuccess, setCopySuccess] = useState(false);
 
   const compressImage = (file: File, maxWidth = 1200, quality = 0.75): Promise<string> => {
     return new Promise((resolve, reject) => {
@@ -166,20 +167,40 @@ const AdminDashboard: React.FC<AdminPageProps> = ({ data, onUpdate }) => {
     });
   };
 
+  const copyDataToClipboard = () => {
+    const json = JSON.stringify(data, null, 2);
+    navigator.clipboard.writeText(json).then(() => {
+      setCopySuccess(true);
+      setTimeout(() => setCopySuccess(false), 2000);
+    });
+  };
+
+  const handleImport = (e: React.ChangeEvent<HTMLTextAreaElement>) => {
+    try {
+      const parsed = JSON.parse(e.target.value);
+      if (parsed.projects && parsed.content) {
+        onUpdate(parsed);
+      }
+    } catch (err) {
+      console.error("Invalid JSON import");
+    }
+  };
+
   return (
     <div className="pt-32 pb-20 px-8">
       <div className="max-w-6xl mx-auto">
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-12 border-b border-white/10 pb-4">
-          <div className="flex gap-8">
-            <TabButton active={activeTab === 'CONTENT'} onClick={() => setActiveTab('CONTENT')}>Global Content</TabButton>
+          <div className="flex gap-8 overflow-x-auto pb-2 md:pb-0">
+            <TabButton active={activeTab === 'CONTENT'} onClick={() => setActiveTab('CONTENT')}>Content</TabButton>
             <TabButton active={activeTab === 'PROJECTS'} onClick={() => setActiveTab('PROJECTS')}>Projects</TabButton>
-            <TabButton active={activeTab === 'STAFF'} onClick={() => setActiveTab('STAFF')}>Staff Credits</TabButton>
+            <TabButton active={activeTab === 'STAFF'} onClick={() => setActiveTab('STAFF')}>Staff</TabButton>
+            <TabButton active={activeTab === 'SYSTEM'} onClick={() => setActiveTab('SYSTEM')}>Deployment</TabButton>
           </div>
           <div className="text-[10px] tracking-widest text-gray-500 uppercase flex items-center gap-2">
             {isProcessing ? (
-              <span className="text-yellow-500 animate-pulse">Processing Media...</span>
+              <span className="text-yellow-500 animate-pulse">Processing...</span>
             ) : (
-              <span className="text-green-500">All Changes Saved Locally</span>
+              <span className="text-green-500">Autosaved to Browser</span>
             )}
           </div>
         </div>
@@ -192,7 +213,7 @@ const AdminDashboard: React.FC<AdminPageProps> = ({ data, onUpdate }) => {
                 <Input label="Philosophy Quote" value={data.content.philosophy} onChange={(v) => updateContent('philosophy', v)} />
               </div>
               <div className="col-span-1 flex flex-col items-center justify-center p-4 border border-white/5 bg-black/20">
-                <label className="block text-[10px] uppercase tracking-widest text-yellow-500 mb-2">Profile Photo (Small)</label>
+                <label className="block text-[10px] uppercase tracking-widest text-yellow-500 mb-2">Profile Photo</label>
                 <div className="flex flex-col items-center gap-4">
                   <img src={data.content.profileImage} className="w-20 h-20 rounded-full object-cover grayscale border border-yellow-400/30" />
                   <input type="file" accept="image/*" onChange={(e) => handleImageUpload(e, (imgs) => updateContent('profileImage', imgs[0]))} className="text-[10px] text-gray-500" />
@@ -203,9 +224,9 @@ const AdminDashboard: React.FC<AdminPageProps> = ({ data, onUpdate }) => {
               </div>
             </Section>
 
-            <Section title="Contact Info">
+            <Section title="Contact Page">
               <div className="col-span-2">
-                <Input label="Contact Page Heading" value={data.content.contactTitle} onChange={(v) => updateContent('contactTitle', v)} />
+                <Input label="Main Heading" value={data.content.contactTitle} onChange={(v) => updateContent('contactTitle', v)} />
               </div>
               <Input label="Email" value={data.content.contact.email} onChange={(v) => updateContact('email', v)} />
               <Input label="Phone" value={data.content.contact.phone} onChange={(v) => updateContact('phone', v)} />
@@ -213,9 +234,9 @@ const AdminDashboard: React.FC<AdminPageProps> = ({ data, onUpdate }) => {
               <Input label="YouTube URL" value={data.content.contact.youtube} onChange={(v) => updateContact('youtube', v)} />
             </Section>
 
-            <Section title="Media">
+            <Section title="Hero Media">
               <div className="col-span-2">
-                <label className="block text-[10px] uppercase tracking-widest text-yellow-500 mb-2 font-bold">Home Background Image</label>
+                <label className="block text-[10px] uppercase tracking-widest text-yellow-500 mb-2 font-bold">Main Background</label>
                 <div className="flex items-center gap-6">
                   <img src={data.content.homeBgImage} className="w-32 aspect-video object-cover bg-zinc-900 border border-white/10" />
                   <input type="file" accept="image/*" onChange={(e) => handleImageUpload(e, (imgs) => updateContent('homeBgImage', imgs[0]))} className="text-xs text-gray-500" />
@@ -280,7 +301,7 @@ const AdminDashboard: React.FC<AdminPageProps> = ({ data, onUpdate }) => {
                   </div>
 
                   <div className="space-y-4">
-                    <label className="block text-[10px] uppercase tracking-widest text-yellow-500 font-bold">Film Stills (16:9 recommended)</label>
+                    <label className="block text-[10px] uppercase tracking-widest text-yellow-500 font-bold">Film Stills</label>
                     <input type="file" multiple accept="image/*" onChange={(e) => handleImageUpload(e, (imgs) => updateProject(project.id, { stills: [...project.stills, ...imgs] }))} className="text-xs text-gray-500" />
                     <div className="grid grid-cols-4 md:grid-cols-6 gap-2 mt-4">
                       {project.stills.map((s, idx) => (
@@ -324,18 +345,36 @@ const AdminDashboard: React.FC<AdminPageProps> = ({ data, onUpdate }) => {
                       <button onClick={() => deleteStaff(s.id)} className="text-red-500/50 hover:text-red-500 text-[10px] uppercase">Delete</button>
                     </div>
                   </div>
-                  <div className="space-y-2">
-                    <label className="block text-[10px] uppercase tracking-widest text-yellow-500 font-bold">Awards / Notes (One per line)</label>
-                    <textarea 
-                      className="w-full bg-zinc-800 border border-white/10 px-3 py-2 text-sm focus:border-yellow-400 outline-none min-h-[60px]"
-                      value={s.awards?.join('\n') || ''}
-                      onChange={(e) => updateStaffItem(s.id, { awards: e.target.value.split('\n').filter(str => str.trim() !== '') })}
-                      placeholder="e.g., Won Grand Prize at X Film Festival"
-                    />
-                  </div>
                 </div>
               ))}
             </div>
+          </div>
+        )}
+
+        {activeTab === 'SYSTEM' && (
+          <div className="space-y-12">
+            <Section title="Export for Deployment">
+              <div className="col-span-2 space-y-4">
+                <p className="text-sm text-gray-400 leading-relaxed">
+                  브라우저에 저장된 수정 사항을 웹사이트에 영구적으로 반영하려면 아래의 데이터를 복사하여 <code className="text-yellow-400">constants.ts</code>의 <code className="text-yellow-400">INITIAL_DATA</code> 부분에 덮어쓰세요.
+                </p>
+                <button 
+                  onClick={copyDataToClipboard}
+                  className={`w-full py-4 border transition-all uppercase tracking-widest text-xs font-bold ${copySuccess ? 'bg-green-600 border-green-500 text-white' : 'border-yellow-500 text-yellow-500 hover:bg-yellow-500 hover:text-black'}`}
+                >
+                  {copySuccess ? 'Copied to Clipboard!' : 'Copy Deployment JSON'}
+                </button>
+                <div className="mt-8">
+                  <label className="block text-[10px] uppercase tracking-widest text-yellow-500 mb-2">Raw Data (JSON)</label>
+                  <textarea 
+                    className="w-full bg-zinc-900 border border-white/10 p-4 text-[10px] font-mono focus:border-yellow-400 outline-none min-h-[400px]"
+                    value={JSON.stringify(data, null, 2)}
+                    readOnly
+                    onClick={(e) => (e.target as HTMLTextAreaElement).select()}
+                  />
+                </div>
+              </div>
+            </Section>
           </div>
         )}
       </div>
@@ -346,7 +385,7 @@ const AdminDashboard: React.FC<AdminPageProps> = ({ data, onUpdate }) => {
 const TabButton: React.FC<{ active: boolean; onClick: () => void; children: React.ReactNode }> = ({ active, onClick, children }) => (
   <button 
     onClick={onClick}
-    className={`text-[10px] tracking-[0.2em] uppercase py-2 px-1 border-b-2 transition-all ${active ? 'border-yellow-400 text-yellow-400' : 'border-transparent text-gray-500 hover:text-gray-300'}`}
+    className={`text-[10px] tracking-[0.2em] uppercase py-2 px-1 border-b-2 transition-all whitespace-nowrap ${active ? 'border-yellow-400 text-yellow-400' : 'border-transparent text-gray-500 hover:text-gray-300'}`}
   >
     {children}
   </button>
@@ -376,7 +415,7 @@ const Textarea: React.FC<{ label: string; value: string; onChange: (v: string) =
   <div className="space-y-2">
     <label className="block text-[10px] uppercase tracking-widest text-yellow-500/70 font-bold">{label}</label>
     <textarea 
-      className="w-full bg-zinc-800 border border-white/10 px-3 py-2 text-sm focus:border-yellow-400 outline-none transition-colors min-h-[240px]"
+      className="w-full bg-zinc-800 border border-white/10 px-3 py-2 text-sm focus:border-yellow-400 outline-none transition-colors min-h-[200px]"
       value={value}
       onChange={(e) => onChange(e.target.value)}
     />
