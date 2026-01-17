@@ -3,6 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { HashRouter, Routes, Route, Link, useLocation } from 'react-router-dom';
 import { PortfolioData } from './types';
 import { INITIAL_DATA } from './constants';
+import { supabase } from './supabase';
 
 // Pages
 import HomePage from './pages/HomePage';
@@ -14,28 +15,60 @@ import ContactPage from './pages/ContactPage';
 import AdminPage from './pages/AdminPage';
 
 const App: React.FC = () => {
-  const [data, setData] = useState<PortfolioData>(() => {
-    try {
-      const saved = localStorage.getItem('portfolio_data');
-      return saved ? JSON.parse(saved) : INITIAL_DATA;
-    } catch (e) {
-      console.error("Failed to load data from localStorage", e);
-      return INITIAL_DATA;
-    }
-  });
+  const [data, setData] = useState<PortfolioData | null>(null);
+  const [loading, setLoading] = useState(true);
 
+  // Fetch data from Supabase on load
   useEffect(() => {
-    try {
-      localStorage.setItem('portfolio_data', JSON.stringify(data));
-    } catch (e) {
-      if (e instanceof DOMException && e.name === 'QuotaExceededError') {
-        alert("Storage is full. Please use smaller images or delete old ones.");
-      }
-      console.error("Failed to save data to localStorage", e);
-    }
-  }, [data]);
+    const fetchData = async () => {
+      try {
+        const { data: dbData, error } = await supabase
+          .from('portfolio')
+          .select('data')
+          .eq('id', 1)
+          .single();
 
-  const updateData = (newData: PortfolioData) => setData(newData);
+        if (error || !dbData) {
+          console.warn("Could not find data in Supabase, using defaults.");
+          setData(INITIAL_DATA);
+        } else {
+          setData(dbData.data);
+        }
+      } catch (err) {
+        console.error("Supabase connection error:", err);
+        setData(INITIAL_DATA);
+      } finally {
+        setLoading(false);
+      }
+    };
+
+    fetchData();
+  }, []);
+
+  const updateData = async (newData: PortfolioData) => {
+    setData(newData);
+    // Push update to Supabase
+    const { error } = await supabase
+      .from('portfolio')
+      .update({ data: newData })
+      .eq('id', 1);
+    
+    if (error) {
+      console.error("Failed to save to database:", error);
+      alert("Database sync failed. Please check your connection.");
+    }
+  };
+
+  if (loading || !data) {
+    return (
+      <div className="h-screen w-full bg-black flex items-center justify-center">
+        <div className="text-center space-y-4">
+          <div className="font-cinematic text-2xl tracking-[0.5em] animate-pulse">PORTFOLIO</div>
+          <p className="text-[10px] tracking-widest text-yellow-500/50 uppercase">Syncing with Server...</p>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <HashRouter>
@@ -64,7 +97,6 @@ const Navigation: React.FC = () => {
   const location = useLocation();
   const isHome = location.pathname === '/';
 
-  // Close menu when location changes
   useEffect(() => {
     setIsMenuOpen(false);
   }, [location]);
@@ -75,8 +107,6 @@ const Navigation: React.FC = () => {
         <Link to="/" className="font-cinematic text-lg md:text-xl tracking-[0.3em] font-bold hover:text-yellow-400 transition-colors">
           PORTFOLIO
         </Link>
-        
-        {/* Desktop Menu */}
         <div className="hidden md:flex gap-8 text-[11px] font-medium tracking-[0.2em] uppercase">
           <NavLink to="/about">About</NavLink>
           <NavLink to="/directing">Directing</NavLink>
@@ -86,28 +116,20 @@ const Navigation: React.FC = () => {
           <NavLink to="/contact">Contact</NavLink>
           <NavLink to="/admin" className="text-gray-500">Admin</NavLink>
         </div>
-
-        {/* Mobile Menu Button */}
-        <button 
-          onClick={() => setIsMenuOpen(!isMenuOpen)}
-          className="md:hidden flex flex-col gap-1.5 p-2 focus:outline-none z-[110]"
-          aria-label="Toggle Menu"
-        >
+        <button onClick={() => setIsMenuOpen(!isMenuOpen)} className="md:hidden flex flex-col gap-1.5 p-2 focus:outline-none z-[110]">
           <span className={`w-6 h-[1px] bg-white transition-transform duration-300 ${isMenuOpen ? 'rotate-45 translate-y-2 !bg-yellow-400' : ''}`}></span>
           <span className={`w-6 h-[1px] bg-white transition-opacity duration-300 ${isMenuOpen ? 'opacity-0' : ''}`}></span>
           <span className={`w-6 h-[1px] bg-white transition-transform duration-300 ${isMenuOpen ? '-rotate-45 -translate-y-2 !bg-yellow-400' : ''}`}></span>
         </button>
       </nav>
-
-      {/* Mobile Menu Overlay */}
       <div className={`fixed inset-0 bg-black z-[90] flex flex-col items-center justify-center gap-8 transition-all duration-500 md:hidden ${isMenuOpen ? 'opacity-100 pointer-events-auto' : 'opacity-0 pointer-events-none translate-y-4'}`}>
         <div className="flex flex-col items-center gap-10 text-sm tracking-[0.4em] uppercase font-light">
-          <Link to="/about" onClick={() => setIsMenuOpen(false)} className={location.pathname === '/about' ? 'text-yellow-400 font-bold' : ''}>About</Link>
-          <Link to="/directing" onClick={() => setIsMenuOpen(false)} className={location.pathname === '/directing' ? 'text-yellow-400 font-bold' : ''}>Directing</Link>
-          <Link to="/ai-film" onClick={() => setIsMenuOpen(false)} className={location.pathname === '/ai-film' ? 'text-yellow-400 font-bold' : ''}>AI Film</Link>
-          <Link to="/cinematography" onClick={() => setIsMenuOpen(false)} className={location.pathname === '/cinematography' ? 'text-yellow-400 font-bold' : ''}>Cinematography</Link>
-          <Link to="/staff" onClick={() => setIsMenuOpen(false)} className={location.pathname === '/staff' ? 'text-yellow-400 font-bold' : ''}>Staff</Link>
-          <Link to="/contact" onClick={() => setIsMenuOpen(false)} className={location.pathname === '/contact' ? 'text-yellow-400 font-bold' : ''}>Contact</Link>
+          <Link to="/about" onClick={() => setIsMenuOpen(false)}>About</Link>
+          <Link to="/directing" onClick={() => setIsMenuOpen(false)}>Directing</Link>
+          <Link to="/ai-film" onClick={() => setIsMenuOpen(false)}>AI Film</Link>
+          <Link to="/cinematography" onClick={() => setIsMenuOpen(false)}>Cinematography</Link>
+          <Link to="/staff" onClick={() => setIsMenuOpen(false)}>Staff</Link>
+          <Link to="/contact" onClick={() => setIsMenuOpen(false)}>Contact</Link>
           <Link to="/admin" onClick={() => setIsMenuOpen(false)} className="text-gray-600">Admin</Link>
         </div>
       </div>
