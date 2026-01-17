@@ -20,7 +20,10 @@ export const storageService = {
 
     try {
       const response = await fetch(`https://api.jsonbin.io/v3/b/${binId}/latest`, {
-        headers: { 'X-Master-Key': apiKey },
+        headers: { 
+          'X-Master-Key': apiKey,
+          'X-Bin-Meta': 'false' // 메타데이터 없이 순수 데이터만 가져오도록 설정
+        },
         cache: 'no-cache'
       });
       
@@ -28,15 +31,17 @@ export const storageService = {
       if (response.status === 404) throw new Error('Bin ID를 찾을 수 없습니다.');
       if (!response.ok) throw new Error(`서버 응답 오류: ${response.status}`);
       
-      const result = await response.json();
-      const remoteData = result.record;
+      const remoteData = await response.json();
 
-      if (!this.isValidData(remoteData)) {
-        await this.savePortfolio(INITIAL_DATA);
+      // JSONbin의 응답 방식에 따라 데이터가 record 안에 있을 수도 있고 바로 있을 수도 있음
+      const dataToUse = remoteData.record || remoteData;
+
+      if (!this.isValidData(dataToUse)) {
+        console.warn("Invalid data structure detected, using fallback.");
         return INITIAL_DATA;
       }
 
-      return remoteData as PortfolioData;
+      return dataToUse as PortfolioData;
     } catch (err: any) {
       console.error("Cloud load failed:", err);
       throw err;
@@ -72,11 +77,6 @@ export const storageService = {
   },
 
   async uploadImage(file: File): Promise<string> {
-    // 이미지 용량이 너무 크면 압축 권고 (약 1MB 이상인 경우)
-    if (file.size > 1 * 1024 * 1024) {
-      console.warn("Large image detected. This might cause storage failure.");
-    }
-    
     return new Promise((resolve) => {
       const reader = new FileReader();
       reader.onloadend = () => resolve(reader.result as string);
