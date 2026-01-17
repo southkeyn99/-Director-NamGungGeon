@@ -1,48 +1,54 @@
 
 import { PortfolioData } from './types';
+import { supabase } from './supabase';
 
-/**
- * Vercel Postgres & Blob Storage Service
- * Handles all data persistence via API routes.
- */
 export const storageService = {
-  // Fetch site data from Vercel Postgres
-  async getPortfolio(): Promise<PortfolioData> {
-    const response = await fetch('/api/portfolio');
-    if (!response.ok) {
-      throw new Error(`Failed to fetch: ${response.statusText}`);
+  // Fetch site data from Supabase DB
+  async getPortfolio(): Promise<PortfolioData | null> {
+    if (!supabase) return null;
+
+    const { data, error } = await supabase
+      .from('portfolio')
+      .select('data')
+      .eq('id', 1)
+      .single();
+
+    if (error) {
+      console.warn("Database fetch error:", error.message);
+      return null;
     }
-    return response.json();
+    return data?.data as PortfolioData;
   },
 
-  // Save site data to Vercel Postgres
+  // Save site data to Supabase DB (Instant Update)
   async savePortfolio(data: PortfolioData): Promise<void> {
-    const response = await fetch('/api/portfolio', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
-      body: JSON.stringify(data),
-    });
-    if (!response.ok) {
-      throw new Error(`Failed to save: ${response.statusText}`);
-    }
+    if (!supabase) throw new Error("Supabase client not initialized");
+
+    const { error } = await supabase
+      .from('portfolio')
+      .upsert({ id: 1, data: data, updated_at: new Date().toISOString() });
+
+    if (error) throw error;
   },
 
-  // Upload image to Vercel Blob
+  // Upload image to Supabase Storage Bucket ('media')
   async uploadImage(file: File): Promise<string> {
-    const formData = new FormData();
-    formData.append('file', file);
+    if (!supabase) throw new Error("Supabase client not initialized");
 
-    const response = await fetch('/api/upload', {
-      method: 'POST',
-      body: formData,
-    });
+    const fileExt = file.name.split('.').pop();
+    const fileName = `${Date.now()}-${Math.random().toString(36).substring(2)}.${fileExt}`;
+    const filePath = `uploads/${fileName}`;
 
-    if (!response.ok) {
-      const errorData = await response.json().catch(() => ({}));
-      throw new Error(errorData.message || 'Image upload failed');
-    }
+    const { error: uploadError } = await supabase.storage
+      .from('media')
+      .upload(filePath, file);
 
-    const { url } = await response.json();
-    return url;
+    if (uploadError) throw uploadError;
+
+    const { data: { publicUrl } } = supabase.storage
+      .from('media')
+      .getPublicUrl(filePath);
+
+    return publicUrl;
   }
 };

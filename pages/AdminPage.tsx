@@ -1,7 +1,8 @@
 
 import React, { useState } from 'react';
-import { PortfolioData, Project, StaffHistory, Category } from '../types';
+import { PortfolioData, Project, Category } from '../types';
 import { storageService } from '../storage';
+import { supabase } from '../supabase';
 
 interface AdminPageProps {
   data: PortfolioData;
@@ -46,7 +47,7 @@ const AdminPage: React.FC<AdminPageProps> = ({ data, onUpdate }) => {
 };
 
 const AdminDashboard: React.FC<AdminPageProps> = ({ data, onUpdate }) => {
-  const [activeTab, setActiveTab] = useState<'CONTENT' | 'PROJECTS' | 'STAFF' | 'SYSTEM'>('CONTENT');
+  const [activeTab, setActiveTab] = useState<'CONTENT' | 'PROJECTS' | 'SYSTEM'>('CONTENT');
   const [isProcessing, setIsProcessing] = useState(false);
 
   const handleImageUpload = async (e: React.ChangeEvent<HTMLInputElement>, callback: (urls: string[]) => void) => {
@@ -59,28 +60,10 @@ const AdminDashboard: React.FC<AdminPageProps> = ({ data, onUpdate }) => {
       const urls = await Promise.all(uploadPromises);
       callback(urls);
     } catch (err: any) {
-      console.error("Cloud upload failed", err);
-      alert(err.message || "이미지 업로드에 실패했습니다. Vercel Blob 설정을 확인하세요.");
+      alert("업로드 실패: " + (err.message || "서버 설정을 확인하세요."));
     } finally {
       setIsProcessing(false);
     }
-  };
-
-  const updateContent = (field: string, value: any) => {
-    onUpdate({
-      ...data,
-      content: { ...data.content, [field]: value }
-    });
-  };
-
-  const updateContact = (field: string, value: string) => {
-    onUpdate({
-      ...data,
-      content: {
-        ...data.content,
-        contact: { ...data.content.contact, [field]: value }
-      }
-    });
   };
 
   const addProject = () => {
@@ -91,100 +74,99 @@ const AdminDashboard: React.FC<AdminPageProps> = ({ data, onUpdate }) => {
       titleKr: '새 작품',
       titleEn: 'NEW PROJECT',
       genre: 'Drama',
-      runtime: '00min',
+      runtime: '0min',
       role: 'Director',
       synopsis: '',
       awards: [],
-      mainImage: 'https://picsum.photos/id/10/800/1200',
+      mainImage: 'https://picsum.photos/id/1/800/1200',
       stills: []
     };
     onUpdate({ ...data, projects: [newProject, ...data.projects] });
   };
 
-  const updateProject = (id: string, updates: Partial<Project>) => {
-    onUpdate({
-      ...data,
-      projects: data.projects.map(p => p.id === id ? { ...p, ...updates } : p)
-    });
-  };
-
   return (
     <div className="pt-32 pb-20 px-8">
       <div className="max-w-6xl mx-auto">
+        {/* Header & Status */}
         <div className="flex flex-col md:flex-row md:items-center justify-between gap-4 mb-12 border-b border-white/10 pb-4">
           <div className="flex gap-8 overflow-x-auto pb-2 md:pb-0">
-            <TabButton active={activeTab === 'CONTENT'} onClick={() => setActiveTab('CONTENT')}>Global Content</TabButton>
+            <TabButton active={activeTab === 'CONTENT'} onClick={() => setActiveTab('CONTENT')}>Identity</TabButton>
             <TabButton active={activeTab === 'PROJECTS'} onClick={() => setActiveTab('PROJECTS')}>Projects</TabButton>
-            <TabButton active={activeTab === 'STAFF'} onClick={() => setActiveTab('STAFF')}>Staff</TabButton>
-            <TabButton active={activeTab === 'SYSTEM'} onClick={() => setActiveTab('SYSTEM')}>Vercel Deployment</TabButton>
+            <TabButton active={activeTab === 'SYSTEM'} onClick={() => setActiveTab('SYSTEM')}>Server Config</TabButton>
           </div>
-          <div className="text-[10px] tracking-widest uppercase flex items-center gap-2">
+          <div className="text-[10px] tracking-widest uppercase flex items-center gap-3">
             {isProcessing ? (
-              <span className="text-yellow-500 animate-pulse">Communicating with Vercel API...</span>
+              <span className="text-yellow-500 animate-pulse font-bold">● CLOUD SYNCING...</span>
             ) : (
-              <span className="text-green-500">Cloud Status: Active</span>
+              <span className={supabase ? "text-green-500 font-bold" : "text-red-500 font-bold"}>
+                {supabase ? "● LIVE SYNC ACTIVE" : "● OFFLINE MODE"}
+              </span>
             )}
           </div>
         </div>
 
         {activeTab === 'CONTENT' && (
           <div className="space-y-12">
-            <Section title="Identity">
-              <Input label="Name" value={data.content.name} onChange={(v) => updateContent('name', v)} />
-              <Input label="Philosophy" value={data.content.philosophy} onChange={(v) => updateContent('philosophy', v)} />
-              <div className="col-span-2 space-y-4">
-                <label className="block text-[10px] uppercase tracking-widest text-yellow-500 font-bold">Profile Image</label>
-                <div className="flex items-center gap-6">
-                  <img src={data.content.profileImage} className="w-20 h-20 rounded-full object-cover grayscale border border-yellow-400/30" />
-                  <input type="file" accept="image/*" onChange={(e) => handleImageUpload(e, (urls) => updateContent('profileImage', urls[0]))} className="text-xs text-gray-500" />
-                </div>
-              </div>
+            <Section title="Profile Information">
+              <Input label="Name" value={data.content.name} onChange={(v) => onUpdate({...data, content: {...data.content, name: v}})} />
+              <Input label="Philosophy" value={data.content.philosophy} onChange={(v) => onUpdate({...data, content: {...data.content, philosophy: v}})} />
               <div className="col-span-2">
-                <Textarea label="About Me Text" value={data.content.aboutText} onChange={(v) => updateContent('aboutText', v)} />
+                <Textarea label="About Biography" value={data.content.aboutText} onChange={(v) => onUpdate({...data, content: {...data.content, aboutText: v}})} />
+              </div>
+              <div className="col-span-2 space-y-4 pt-4">
+                <label className="block text-[10px] uppercase tracking-[0.2em] text-yellow-500/70 font-bold">Profile Photo</label>
+                <div className="flex items-center gap-8 p-4 bg-zinc-900/50 border border-white/5">
+                  <img src={data.content.profileImage} className="w-20 h-20 rounded-full object-cover grayscale border border-yellow-500/30" />
+                  <input type="file" accept="image/*" onChange={(e) => handleImageUpload(e, (urls) => onUpdate({...data, content: {...data.content, profileImage: urls[0]}}))} className="text-[10px] uppercase text-gray-500" />
+                </div>
               </div>
             </Section>
 
-            <Section title="Contact Info">
-              <Input label="Heading" value={data.content.contactTitle} onChange={(v) => updateContent('contactTitle', v)} />
-              <Input label="Email" value={data.content.contact.email} onChange={(v) => updateContact('email', v)} />
-              <Input label="Phone" value={data.content.contact.phone} onChange={(v) => updateContact('phone', v)} />
-              <Input label="Instagram" value={data.content.contact.instagram} onChange={(v) => updateContact('instagram', v)} />
+            <Section title="Contact Channels">
+              <Input label="Email" value={data.content.contact.email} onChange={(v) => onUpdate({...data, content: {...data.content, contact: {...data.content.contact, email: v}}})} />
+              <Input label="Phone" value={data.content.contact.phone} onChange={(v) => onUpdate({...data, content: {...data.content, contact: {...data.content.contact, phone: v}}})} />
+              <Input label="Instagram URL" value={data.content.contact.instagram} onChange={(v) => onUpdate({...data, content: {...data.content, contact: {...data.content.contact, instagram: v}}})} />
+              <Input label="YouTube URL" value={data.content.contact.youtube} onChange={(v) => onUpdate({...data, content: {...data.content, contact: {...data.content.contact, youtube: v}}})} />
             </Section>
           </div>
         )}
 
         {activeTab === 'PROJECTS' && (
           <div className="space-y-8">
-            <button onClick={addProject} className="w-full py-4 border border-dashed border-yellow-500/20 hover:border-yellow-400/50 text-xs tracking-widest uppercase">
-              + New Project
+            <button onClick={addProject} className="w-full py-6 border border-dashed border-yellow-500/20 hover:border-yellow-400/50 hover:bg-yellow-400/5 text-xs tracking-[0.3em] uppercase transition-all font-bold">
+              + Register New Film Project
             </button>
             <div className="space-y-16">
-              {data.projects.map((project) => (
-                <div key={project.id} className="p-8 bg-zinc-900/50 border border-white/5 space-y-8">
-                  <div className="grid md:grid-cols-4 gap-6">
+              {data.projects.map((p) => (
+                <div key={p.id} className="p-8 bg-zinc-900/40 border border-white/5 space-y-8 relative group">
+                  <button 
+                    onClick={() => onUpdate({...data, projects: data.projects.filter(x => x.id !== p.id)})}
+                    className="absolute top-4 right-4 text-[10px] text-red-500/50 hover:text-red-500 uppercase tracking-widest font-bold transition-colors"
+                  >
+                    Delete Project
+                  </button>
+                  <div className="grid md:grid-cols-4 gap-8">
                     <div className="space-y-4">
-                       <label className="block text-[10px] uppercase tracking-widest text-yellow-500 font-bold">Main Visual</label>
-                       <img src={project.mainImage} className="w-full aspect-[2/3] object-cover bg-black border border-white/10" />
-                       <input type="file" accept="image/*" onChange={(e) => handleImageUpload(e, (urls) => updateProject(project.id, { mainImage: urls[0] }))} className="text-xs text-gray-500" />
+                       <label className="block text-[10px] uppercase tracking-widest text-yellow-500 font-bold">Poster</label>
+                       <img src={p.mainImage} className="w-full aspect-[2/3] object-cover bg-black border border-white/10" />
+                       <input type="file" accept="image/*" onChange={(e) => handleImageUpload(e, (urls) => onUpdate({...data, projects: data.projects.map(x => x.id === p.id ? {...x, mainImage: urls[0]} : x)}))} className="text-[8px] uppercase text-gray-500" />
                     </div>
-                    <div className="md:col-span-3 grid grid-cols-2 gap-4">
-                      <Input label="Title (KR)" value={project.titleKr} onChange={(v) => updateProject(project.id, { titleKr: v })} />
-                      <Input label="Title (EN)" value={project.titleEn} onChange={(v) => updateProject(project.id, { titleEn: v })} />
-                      <Input label="Year" value={project.year} onChange={(v) => updateProject(project.id, { year: v })} />
-                      <Input label="Genre" value={project.genre} onChange={(v) => updateProject(project.id, { genre: v })} />
-                    </div>
-                  </div>
-                  <Textarea label="Synopsis" value={project.synopsis} onChange={(v) => updateProject(project.id, { synopsis: v })} />
-                  <div className="space-y-4">
-                    <label className="block text-[10px] uppercase tracking-widest text-yellow-500 font-bold">Film Stills</label>
-                    <input type="file" multiple accept="image/*" onChange={(e) => handleImageUpload(e, (urls) => updateProject(project.id, { stills: [...project.stills, ...urls] }))} className="text-xs text-gray-500" />
-                    <div className="grid grid-cols-6 gap-2 mt-4">
-                      {project.stills.map((s, idx) => (
-                        <div key={idx} className="relative group">
-                          <img src={s} className="w-full aspect-square object-cover opacity-60 hover:opacity-100" />
-                          <button onClick={() => updateProject(project.id, { stills: project.stills.filter((_, i) => i !== idx) })} className="absolute top-1 right-1 bg-black/80 text-[8px] p-1">X</button>
-                        </div>
-                      ))}
+                    <div className="md:col-span-3 grid grid-cols-2 gap-6">
+                      <Input label="Title (KR)" value={p.titleKr} onChange={(v) => onUpdate({...data, projects: data.projects.map(x => x.id === p.id ? {...x, titleKr: v} : x)})} />
+                      <Input label="Title (EN)" value={p.titleEn} onChange={(v) => onUpdate({...data, projects: data.projects.map(x => x.id === p.id ? {...x, titleEn: v} : x)})} />
+                      <Input label="Year" value={p.year} onChange={(v) => onUpdate({...data, projects: data.projects.map(x => x.id === p.id ? {...x, year: v} : x)})} />
+                      <div className="flex flex-col gap-2">
+                        <label className="text-[10px] uppercase tracking-widest text-yellow-500/70 font-bold">Category</label>
+                        <select 
+                          className="bg-zinc-800 border border-white/10 px-3 py-2 text-xs text-white focus:border-yellow-400 outline-none"
+                          value={p.category}
+                          onChange={(e) => onUpdate({...data, projects: data.projects.map(x => x.id === p.id ? {...x, category: e.target.value as Category} : x)})}
+                        >
+                          <option value="DIRECTING">Directing</option>
+                          <option value="AI_FILM">AI Film</option>
+                          <option value="CINEMATOGRAPHY">Cinematography</option>
+                        </select>
+                      </div>
                     </div>
                   </div>
                 </div>
@@ -194,52 +176,37 @@ const AdminDashboard: React.FC<AdminPageProps> = ({ data, onUpdate }) => {
         )}
 
         {activeTab === 'SYSTEM' && (
-          <div className="space-y-12">
+          <div className="space-y-10">
             <div className="p-8 bg-zinc-900/50 border border-white/5 space-y-6">
-              <h3 className="text-xs tracking-widest uppercase text-yellow-500 font-bold">Vercel Backend Implementation Guide</h3>
-              <p className="text-sm text-gray-400 leading-relaxed">
-                이 앱은 브라우저 저장소를 사용하지 않으며, 모든 데이터는 Vercel Postgres와 Vercel Blob에 저장됩니다. 이를 위해 프로젝트에 아래의 API 라우트를 구성해야 합니다.
+              <h3 className="text-xs tracking-[0.3em] uppercase text-yellow-500 font-bold">Server Synchronized Architecture</h3>
+              <p className="text-sm text-gray-400 leading-relaxed font-light">
+                이 포트폴리오는 더 이상 브라우저의 <strong>localStorage</strong>를 사용하지 않습니다. 모든 수정사항은 실시간으로 Supabase 클라우드 데이터베이스에 저장되어 전 세계 어디서든 동일하게 노출됩니다.
               </p>
               
-              <div className="space-y-8">
-                <div>
-                  <h4 className="text-[10px] tracking-widest uppercase text-gray-300 mb-2 font-bold">1. Postgres API (api/portfolio/route.ts)</h4>
+              <div className="space-y-6 pt-4">
+                <div className="p-5 border border-yellow-500/20 bg-yellow-500/5">
+                  <h4 className="text-[10px] tracking-widest uppercase text-yellow-500 mb-3 font-bold">Step 1: SQL Setup (Supabase Dashboard)</h4>
+                  <p className="text-[11px] text-gray-400 mb-4 leading-relaxed">Supabase의 'SQL Editor'에서 아래 코드를 실행하여 데이터를 저장할 테이블을 생성하세요.</p>
                   <pre className="bg-black p-4 text-[10px] font-mono text-yellow-500/80 overflow-x-auto border border-white/10">
-{`import { sql } from '@vercel/postgres';
-import { NextResponse } from 'next/server';
+{`CREATE TABLE portfolio (
+  id int8 PRIMARY KEY,
+  data jsonb,
+  updated_at timestamptz DEFAULT now()
+);
 
-export async function GET() {
-  const { rows } = await sql\`SELECT data FROM portfolio WHERE id = 1\`;
-  return NextResponse.json(rows[0]?.data || {});
-}
-
-export async function POST(req: Request) {
-  const data = await req.json();
-  await sql\`INSERT INTO portfolio (id, data) VALUES (1, \${JSON.stringify(data)})
-           ON CONFLICT (id) DO UPDATE SET data = \${JSON.stringify(data)}\`;
-  return NextResponse.json({ success: true });
-}`}
+-- 초기 데이터 삽입
+INSERT INTO portfolio (id, data) VALUES (1, '{}');`}
                   </pre>
                 </div>
 
-                <div>
-                  <h4 className="text-[10px] tracking-widest uppercase text-gray-300 mb-2 font-bold">2. Blob Upload API (api/upload/route.ts)</h4>
-                  <pre className="bg-black p-4 text-[10px] font-mono text-yellow-500/80 overflow-x-auto border border-white/10">
-{`import { put } from '@vercel/blob';
-import { NextResponse } from 'next/server';
-
-export async function POST(req: Request) {
-  const formData = await req.formData();
-  const file = formData.get('file') as File;
-  const blob = await put(file.name, file, { access: 'public' });
-  return NextResponse.json(blob);
-}`}
-                  </pre>
+                <div className="p-5 border border-blue-500/20 bg-blue-500/5">
+                  <h4 className="text-[10px] tracking-widest uppercase text-blue-400 mb-3 font-bold">Step 2: Environment Variables (Vercel)</h4>
+                  <p className="text-[11px] text-gray-400 mb-4 leading-relaxed">Vercel 프로젝트 설정에서 아래 환경 변수를 추가하세요.</p>
+                  <ul className="text-[10px] font-mono text-blue-200/70 space-y-1">
+                    <li>SUPABASE_URL: (Project URL)</li>
+                    <li>SUPABASE_ANON_KEY: (Anon Public Key)</li>
+                  </ul>
                 </div>
-              </div>
-
-              <div className="p-4 bg-yellow-500/10 border border-yellow-500/20 text-[10px] tracking-widest uppercase text-yellow-500">
-                중요: Vercel Dashboard에서 Postgres와 Blob 스토리지를 활성화하고 환경 변수를 연결해야 합니다.
               </div>
             </div>
           </div>
@@ -250,29 +217,29 @@ export async function POST(req: Request) {
 };
 
 const TabButton: React.FC<{ active: boolean; onClick: () => void; children: React.ReactNode }> = ({ active, onClick, children }) => (
-  <button onClick={onClick} className={`text-[10px] tracking-[0.2em] uppercase py-2 px-1 border-b-2 transition-all whitespace-nowrap ${active ? 'border-yellow-400 text-yellow-400' : 'border-transparent text-gray-500 hover:text-gray-300'}`}>
+  <button onClick={onClick} className={`text-[10px] tracking-[0.2em] uppercase py-2 px-1 border-b-2 transition-all whitespace-nowrap font-bold ${active ? 'border-yellow-400 text-yellow-400' : 'border-transparent text-gray-500 hover:text-gray-300'}`}>
     {children}
   </button>
 );
 
 const Section: React.FC<{ title: string; children: React.ReactNode }> = ({ title, children }) => (
   <div className="space-y-6">
-    <h3 className="text-xs font-cinematic tracking-widest text-yellow-600 font-bold uppercase">{title}</h3>
-    <div className="grid md:grid-cols-2 gap-6 p-8 bg-zinc-900/30 border border-white/5">{children}</div>
+    <h3 className="text-[10px] font-cinematic tracking-[0.4em] text-yellow-600 font-bold uppercase border-l-2 border-yellow-600 pl-4">{title}</h3>
+    <div className="grid md:grid-cols-2 gap-8 p-8 bg-zinc-900/30 border border-white/5">{children}</div>
   </div>
 );
 
 const Input: React.FC<{ label: string; value: string; onChange: (v: string) => void }> = ({ label, value, onChange }) => (
   <div className="space-y-2">
     <label className="block text-[10px] uppercase tracking-widest text-yellow-500/70 font-bold">{label}</label>
-    <input className="w-full bg-zinc-800 border border-white/10 px-3 py-2 text-sm focus:border-yellow-400 outline-none transition-colors" value={value} onChange={(e) => onChange(e.target.value)} />
+    <input className="w-full bg-zinc-800 border border-white/10 px-4 py-3 text-sm focus:border-yellow-400 outline-none transition-colors text-white" value={value} onChange={(e) => onChange(e.target.value)} />
   </div>
 );
 
 const Textarea: React.FC<{ label: string; value: string; onChange: (v: string) => void }> = ({ label, value, onChange }) => (
   <div className="space-y-2">
     <label className="block text-[10px] uppercase tracking-widest text-yellow-500/70 font-bold">{label}</label>
-    <textarea className="w-full bg-zinc-800 border border-white/10 px-3 py-2 text-sm focus:border-yellow-400 outline-none transition-colors min-h-[150px]" value={value} onChange={(e) => onChange(e.target.value)} />
+    <textarea className="w-full bg-zinc-800 border border-white/10 px-4 py-3 text-sm focus:border-yellow-400 outline-none transition-colors min-h-[160px] text-white leading-relaxed" value={value} onChange={(e) => onChange(e.target.value)} />
   </div>
 );
 

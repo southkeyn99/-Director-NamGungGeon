@@ -12,8 +12,8 @@ export interface Project {
   role: string;
   synopsis: string;
   awards: string[];
-  mainImage: string; // base64 or URL
-  stills: string[];   // base64 or URL array
+  mainImage: string;
+  stills: string[];
 }
 
 export interface StaffHistory {
@@ -32,7 +32,7 @@ export interface SiteContent {
     instagram: string;
     youtube: string;
   };
-  contactTitle: string; // New field for the contact page heading
+  contactTitle: string;
   philosophy: string;
   name: string;
   homeBgImage: string;

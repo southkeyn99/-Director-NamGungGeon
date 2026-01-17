@@ -4,6 +4,7 @@ import { HashRouter, Routes, Route, Link, useLocation } from 'react-router-dom';
 import { PortfolioData } from './types';
 import { INITIAL_DATA } from './constants';
 import { storageService } from './storage';
+import { supabase } from './supabase';
 
 // Pages
 import HomePage from './pages/HomePage';
@@ -17,37 +18,49 @@ import AdminPage from './pages/AdminPage';
 const App: React.FC = () => {
   const [data, setData] = useState<PortfolioData | null>(null);
   const [loading, setLoading] = useState(true);
-  const [isOffline, setIsOffline] = useState(false);
+  const [connectionStatus, setConnectionStatus] = useState<'CONNECTED' | 'DISCONNECTED' | 'ERROR'>('DISCONNECTED');
 
-  // Fetch data from Vercel API on load
+  // Strictly fetch from Server on Mount
   useEffect(() => {
-    const fetchData = async () => {
+    const initApp = async () => {
+      if (!supabase) {
+        setData(INITIAL_DATA);
+        setConnectionStatus('DISCONNECTED');
+        setLoading(false);
+        return;
+      }
+
       try {
         const dbData = await storageService.getPortfolio();
-        setData(dbData);
-        setIsOffline(false);
+        if (dbData) {
+          setData(dbData);
+          setConnectionStatus('CONNECTED');
+        } else {
+          // If table is empty but DB connected, seed with initial data
+          await storageService.savePortfolio(INITIAL_DATA);
+          setData(INITIAL_DATA);
+          setConnectionStatus('CONNECTED');
+        }
       } catch (err) {
-        console.warn("Vercel API not available. Using local defaults.", err);
+        console.error("Critical Connection Error:", err);
         setData(INITIAL_DATA);
-        setIsOffline(true);
+        setConnectionStatus('ERROR');
       } finally {
         setLoading(false);
       }
     };
 
-    fetchData();
+    initApp();
   }, []);
 
-  const updateData = async (newData: PortfolioData) => {
-    setData(newData);
+  const handleUpdate = async (newData: PortfolioData) => {
+    setData(newData); // Immediate UI update
     
     try {
       await storageService.savePortfolio(newData);
-      setIsOffline(false);
     } catch (err) {
-      console.error("Sync error:", err);
-      alert("데이터 저장에 실패했습니다. Vercel API 설정을 확인하세요.");
-      setIsOffline(true);
+      console.error("Cloud Sync Failed:", err);
+      alert("서버 저장에 실패했습니다. 연결 상태를 확인하세요.");
     }
   };
 
@@ -56,7 +69,7 @@ const App: React.FC = () => {
       <div className="h-screen w-full bg-black flex items-center justify-center">
         <div className="text-center space-y-4">
           <div className="font-cinematic text-2xl tracking-[0.5em] animate-pulse">PORTFOLIO</div>
-          <p className="text-[10px] tracking-widest text-yellow-500/50 uppercase">Connecting to Vercel...</p>
+          <p className="text-[10px] tracking-widest text-yellow-500/50 uppercase">Syncing with Server...</p>
         </div>
       </div>
     );
@@ -65,9 +78,9 @@ const App: React.FC = () => {
   return (
     <HashRouter>
       <div className="min-h-screen bg-black text-white selection:bg-yellow-400 selection:text-black">
-        {isOffline && (
-          <div className="fixed top-0 left-0 w-full bg-yellow-500/20 text-yellow-500 text-[8px] tracking-[0.3em] uppercase py-1 text-center z-[200] backdrop-blur-sm border-b border-yellow-500/30">
-            Preview Mode: No connection to Vercel Postgres
+        {connectionStatus !== 'CONNECTED' && (
+          <div className="fixed top-0 left-0 w-full bg-red-500/20 text-red-400 text-[8px] tracking-[0.3em] uppercase py-1 text-center z-[200] backdrop-blur-sm border-b border-red-500/30">
+            Warning: Server Disconnected. Changes will not be saved.
           </div>
         )}
         <Navigation />
@@ -81,7 +94,7 @@ const App: React.FC = () => {
             <Route path="/project/:id" element={<ProjectDetailPage projects={data.projects} />} />
             <Route path="/staff" element={<StaffPage staff={data.staff} />} />
             <Route path="/contact" element={<ContactPage contact={data.content.contact} contactTitle={data.content.contactTitle} />} />
-            <Route path="/admin" element={<AdminPage data={data} onUpdate={updateData} />} />
+            <Route path="/admin" element={<AdminPage data={data} onUpdate={handleUpdate} />} />
           </Routes>
         </main>
       </div>
