@@ -3,7 +3,7 @@ import React, { useState, useEffect } from 'react';
 import { HashRouter, Routes, Route, Link, useLocation } from 'react-router-dom';
 import { PortfolioData } from './types';
 import { INITIAL_DATA } from './constants';
-import { supabase } from './supabase';
+import { storageService } from './storage';
 
 // Pages
 import HomePage from './pages/HomePage';
@@ -17,34 +17,19 @@ import AdminPage from './pages/AdminPage';
 const App: React.FC = () => {
   const [data, setData] = useState<PortfolioData | null>(null);
   const [loading, setLoading] = useState(true);
+  const [isOffline, setIsOffline] = useState(false);
 
-  // Fetch data from Supabase on load
+  // Fetch data from Vercel API on load
   useEffect(() => {
     const fetchData = async () => {
-      // If Supabase is not configured, fall back to initial data immediately
-      if (!supabase) {
-        console.warn("Supabase is not configured. Using initial constants.");
-        setData(INITIAL_DATA);
-        setLoading(false);
-        return;
-      }
-
       try {
-        const { data: dbData, error } = await supabase
-          .from('portfolio')
-          .select('data')
-          .eq('id', 1)
-          .single();
-
-        if (error || !dbData) {
-          console.warn("Data record not found in Supabase. Using defaults.");
-          setData(INITIAL_DATA);
-        } else {
-          setData(dbData.data);
-        }
+        const dbData = await storageService.getPortfolio();
+        setData(dbData);
+        setIsOffline(false);
       } catch (err) {
-        console.error("Supabase fetch failed:", err);
+        console.warn("Vercel API not available. Using local defaults.", err);
         setData(INITIAL_DATA);
+        setIsOffline(true);
       } finally {
         setLoading(false);
       }
@@ -56,23 +41,13 @@ const App: React.FC = () => {
   const updateData = async (newData: PortfolioData) => {
     setData(newData);
     
-    if (!supabase) {
-      alert("Cloud sync is disabled because Supabase is not configured.");
-      return;
-    }
-
     try {
-      const { error } = await supabase
-        .from('portfolio')
-        .update({ data: newData })
-        .eq('id', 1);
-      
-      if (error) {
-        console.error("Failed to save to database:", error);
-        alert("Database sync failed. Check your Supabase table permissions (RLS).");
-      }
+      await storageService.savePortfolio(newData);
+      setIsOffline(false);
     } catch (err) {
       console.error("Sync error:", err);
+      alert("데이터 저장에 실패했습니다. Vercel API 설정을 확인하세요.");
+      setIsOffline(true);
     }
   };
 
@@ -81,7 +56,7 @@ const App: React.FC = () => {
       <div className="h-screen w-full bg-black flex items-center justify-center">
         <div className="text-center space-y-4">
           <div className="font-cinematic text-2xl tracking-[0.5em] animate-pulse">PORTFOLIO</div>
-          <p className="text-[10px] tracking-widest text-yellow-500/50 uppercase">Loading Experience...</p>
+          <p className="text-[10px] tracking-widest text-yellow-500/50 uppercase">Connecting to Vercel...</p>
         </div>
       </div>
     );
@@ -90,6 +65,11 @@ const App: React.FC = () => {
   return (
     <HashRouter>
       <div className="min-h-screen bg-black text-white selection:bg-yellow-400 selection:text-black">
+        {isOffline && (
+          <div className="fixed top-0 left-0 w-full bg-yellow-500/20 text-yellow-500 text-[8px] tracking-[0.3em] uppercase py-1 text-center z-[200] backdrop-blur-sm border-b border-yellow-500/30">
+            Preview Mode: No connection to Vercel Postgres
+          </div>
+        )}
         <Navigation />
         <main>
           <Routes>
