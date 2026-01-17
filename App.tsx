@@ -19,74 +19,91 @@ const App: React.FC = () => {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  // 앱 로드 시 서버에서 데이터 가져오기 (단 한 번)
   useEffect(() => {
     const loadServerData = async () => {
       setLoading(true);
-      const serverData = await storageService.getPortfolio();
-      
-      if (serverData) {
-        setData(serverData);
-      } else {
-        // 서버에 데이터가 없으면 초기값 세팅 (첫 배포 시)
-        setData(INITIAL_DATA);
-        console.log("Using initial default data");
+      try {
+        const serverData = await storageService.getPortfolio();
+        // 데이터가 없거나 형식이 잘못된 경우 초기 데이터 사용
+        if (serverData && serverData.content) {
+          setData(serverData);
+        } else {
+          setData(INITIAL_DATA);
+        }
+      } catch (err) {
+        console.error("Critical Load Error:", err);
+        setData(INITIAL_DATA); // 에러 발생 시 무조건 초기 데이터로 앱 시작
+      } finally {
+        setLoading(false);
       }
-      setLoading(false);
     };
 
     loadServerData();
   }, []);
 
-  // 데이터 업데이트 함수 (서버 동기화 포함)
   const handleUpdate = async (newData: PortfolioData) => {
-    setData(newData); // UI 즉시 반영
-    
+    setData(newData);
     try {
       await storageService.savePortfolio(newData);
     } catch (err) {
       console.error("Server Sync Error:", err);
-      setError("데이터 서버 저장에 실패했습니다.");
+      setError("서버 저장 실패 (네트워크나 키 확인 필요)");
       setTimeout(() => setError(null), 3000);
     }
   };
 
-  if (loading || !data) {
+  if (loading) {
     return (
       <div className="h-screen w-full bg-black flex items-center justify-center">
-        <div className="text-center space-y-4">
-          <div className="font-cinematic text-2xl tracking-[0.5em] animate-pulse">PORTFOLIO</div>
-          <p className="text-[10px] tracking-widest text-yellow-500/50 uppercase font-bold">Server Connecting...</p>
+        <div className="text-center space-y-6">
+          <div className="font-cinematic text-3xl tracking-[0.8em] animate-pulse text-white">PORTFOLIO</div>
+          <div className="flex flex-col items-center gap-2">
+            <div className="w-48 h-[1px] bg-white/10 relative overflow-hidden">
+              <div className="absolute inset-y-0 left-0 bg-yellow-500 animate-[loading_1.5s_infinite] w-24"></div>
+            </div>
+            <p className="text-[9px] tracking-[0.4em] text-yellow-500/50 uppercase font-bold">Synchronizing Cloud...</p>
+          </div>
         </div>
+        <style>{`
+          @keyframes loading {
+            0% { transform: translateX(-100%); }
+            100% { transform: translateX(200%); }
+          }
+        `}</style>
       </div>
     );
   }
 
+  // 데이터가 로드된 후 렌더링
   return (
     <HashRouter>
       <div className="min-h-screen bg-black text-white selection:bg-yellow-400 selection:text-black font-sans">
         {error && (
-          <div className="fixed top-0 left-0 w-full bg-red-600 text-white text-[10px] tracking-widest uppercase py-2 text-center z-[300] font-bold">
+          <div className="fixed top-0 left-0 w-full bg-yellow-600 text-black text-[10px] tracking-widest uppercase py-3 text-center z-[300] font-bold shadow-2xl">
             {error}
           </div>
         )}
         
         <Navigation />
         
-        <main>
+        <main className="animate-fade-in-quick">
           <Routes>
-            <Route path="/" element={<HomePage data={data} />} />
-            <Route path="/about" element={<AboutPage data={data} />} />
-            <Route path="/directing" element={<CategoryPage title="DIRECTING" projects={data.projects.filter(p => p.category === 'DIRECTING')} />} />
-            <Route path="/ai-film" element={<CategoryPage title="AI FILM" projects={data.projects.filter(p => p.category === 'AI_FILM')} />} />
-            <Route path="/cinematography" element={<CategoryPage title="CINEMATOGRAPHY" projects={data.projects.filter(p => p.category === 'CINEMATOGRAPHY')} />} />
-            <Route path="/project/:id" element={<ProjectDetailPage projects={data.projects} />} />
-            <Route path="/staff" element={<StaffPage staff={data.staff} />} />
-            <Route path="/contact" element={<ContactPage contact={data.content.contact} contactTitle={data.content.contactTitle} />} />
-            <Route path="/admin" element={<AdminPage data={data} onUpdate={handleUpdate} />} />
+            <Route path="/" element={<HomePage data={data!} />} />
+            <Route path="/about" element={<AboutPage data={data!} />} />
+            <Route path="/directing" element={<CategoryPage title="DIRECTING" projects={data!.projects.filter(p => p.category === 'DIRECTING')} />} />
+            <Route path="/ai-film" element={<CategoryPage title="AI FILM" projects={data!.projects.filter(p => p.category === 'AI_FILM')} />} />
+            <Route path="/cinematography" element={<CategoryPage title="CINEMATOGRAPHY" projects={data!.projects.filter(p => p.category === 'CINEMATOGRAPHY')} />} />
+            <Route path="/project/:id" element={<ProjectDetailPage projects={data!.projects} />} />
+            <Route path="/staff" element={<StaffPage staff={data!.staff} />} />
+            <Route path="/contact" element={<ContactPage contact={data!.content.contact} contactTitle={data!.content.contactTitle} />} />
+            <Route path="/admin" element={<AdminPage data={data!} onUpdate={handleUpdate} />} />
           </Routes>
         </main>
       </div>
+      <style>{`
+        .animate-fade-in-quick { animation: fadeIn 0.8s ease-out; }
+        @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+      `}</style>
     </HashRouter>
   );
 };
@@ -113,7 +130,7 @@ const Navigation: React.FC = () => {
           <NavLink to="/cinematography">Cinematography</NavLink>
           <NavLink to="/staff">Staff</NavLink>
           <NavLink to="/contact">Contact</NavLink>
-          <NavLink to="/admin" className="text-gray-600 opacity-50 hover:opacity-100">Admin</NavLink>
+          <NavLink to="/admin" className="text-zinc-600 opacity-50 hover:opacity-100">Admin</NavLink>
         </div>
         <button onClick={() => setIsMenuOpen(!isMenuOpen)} className="md:hidden flex flex-col gap-2 p-2 focus:outline-none z-[110]">
           <span className={`w-8 h-[1px] bg-white transition-all duration-500 ${isMenuOpen ? 'rotate-45 translate-y-2.5 !bg-yellow-400' : ''}`}></span>
@@ -129,7 +146,7 @@ const Navigation: React.FC = () => {
           <Link to="/cinematography" onClick={() => setIsMenuOpen(false)}>Cinematography</Link>
           <Link to="/staff" onClick={() => setIsMenuOpen(false)}>Staff</Link>
           <Link to="/contact" onClick={() => setIsMenuOpen(false)}>Contact</Link>
-          <Link to="/admin" onClick={() => setIsMenuOpen(false)} className="text-gray-600">Admin</Link>
+          <Link to="/admin" onClick={() => setIsMenuOpen(false)} className="text-zinc-600">Admin</Link>
         </div>
       </div>
     </>
